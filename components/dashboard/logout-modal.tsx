@@ -26,7 +26,7 @@ export function LogoutModal({ open, onOpenChange, onConfirm }: LogoutModalProps)
             Mohon pastikan semua perubahan telah disimpan
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Batal
           </Button>

@@ -1,8 +1,12 @@
-"use client"
+"use client";
 
-import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { StatCard } from "@/components/dashboard/stat-card"
-import { Users, Package, FileText, AlertTriangle, TrendingUp } from "lucide-react"
+import { useMemo, useEffect, useState } from "react";
+import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
+import { StatCard } from "@/components/dashboard/stat-card";
+import { PartnerDashboard } from "@/components/partner/partner-dashboard";
+import { ActivatedPartnerDashboard } from "@/components/partner/activated-partner-dashboard";
+import { getAuthSessionFromBrowser, type AuthSession } from "@/lib/auth";
+import { Users, Package, FileText, AlertTriangle, TrendingUp } from "lucide-react";
 
 const statsRow1 = [
   {
@@ -33,7 +37,7 @@ const statsRow1 = [
     icon: <AlertTriangle className="h-6 w-6 text-red-600" />,
     iconBgColor: "bg-red-100",
   },
-]
+];
 
 const statsRow2 = [
   {
@@ -64,41 +68,72 @@ const statsRow2 = [
     icon: <TrendingUp className="h-6 w-6 text-emerald-600" />,
     iconBgColor: "bg-emerald-100",
   },
-]
+];
+
+function AdminDashboardContent() {
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-foreground">Dasbor</h1>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {statsRow1.map((stat, index) => (
+          <StatCard
+            key={index}
+            title={stat.title}
+            value={stat.value}
+            trend={stat.trend}
+            icon={stat.icon}
+            iconBgColor={stat.iconBgColor}
+          />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {statsRow2.map((stat, index) => (
+          <StatCard
+            key={index}
+            title={stat.title}
+            value={stat.value}
+            trend={stat.trend}
+            icon={stat.icon}
+            iconBgColor={stat.iconBgColor}
+            action={stat.action}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
+  const [currentUser, setCurrentUser] = useState<AuthSession | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const session = getAuthSessionFromBrowser();
+    setCurrentUser(session);
+    setIsReady(true);
+  }, []);
+
+  if (!isReady) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[300px]" />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-foreground">Dasbor</h1>
-        
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {statsRow1.map((stat, index) => (
-            <StatCard
-              key={index}
-              title={stat.title}
-              value={stat.value}
-              trend={stat.trend}
-              icon={stat.icon}
-              iconBgColor={stat.iconBgColor}
-            />
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {statsRow2.map((stat, index) => (
-            <StatCard
-              key={index}
-              title={stat.title}
-              value={stat.value}
-              trend={stat.trend}
-              icon={stat.icon}
-              iconBgColor={stat.iconBgColor}
-              action={stat.action}
-            />
-          ))}
-        </div>
-      </div>
+      {currentUser?.role === "partner" ? (
+        currentUser.accountStatus === "Activated" ? (
+          <ActivatedPartnerDashboard />
+        ) : (
+          <PartnerDashboard />
+        )
+      ) : (
+        <AdminDashboardContent />
+      )}
     </DashboardLayout>
-  )
+  );
 }

@@ -2,18 +2,12 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Lock } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
-import { PartnerTourPackageManager } from "@/components/partner/partner-tour-package-manager";
 import { TableFilter } from "@/components/dashboard/table-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getAuthSessionFromBrowser } from "@/lib/auth";
-import {
-  isPartnerActivated,
-  partnerBusinessProfileMock,
-  partnerActivatedBusinessProfileMock,
-} from "@/lib/partner-mock";
+import { isPartnerActivated, partnerBusinessProfileMock } from "@/lib/partner-mock";
 import {
   Table,
   TableBody,
@@ -22,8 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Lock } from "lucide-react";
 
-const adminPackages = [
+const packages = [
   {
     id: "00001",
     packageName: "Go Rafting",
@@ -53,7 +48,55 @@ const adminPackages = [
   },
 ];
 
-function AdminPackageManagePage() {
+export default function PackageManagePage() {
+  const currentUser = useMemo(() => getAuthSessionFromBrowser(), []);
+  const isPartner = currentUser?.role === "partner";
+  const canAccessUpload = isPartnerActivated(partnerBusinessProfileMock);
+
+  if (isPartner && !canAccessUpload) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <h1 className="text-2xl font-bold text-foreground">Kelola Paket</h1>
+
+          <div className="rounded-2xl border border-border bg-background p-8 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="rounded-full bg-yellow-100 p-3">
+                <Lock className="h-6 w-6 text-yellow-600" />
+              </div>
+
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">
+                  Fitur upload paket masih terkunci
+                </h2>
+                <p className="mt-2 max-w-2xl text-muted-foreground">
+                  Sebelum dapat mengupload konten destinasi atau paket wisata,
+                  Anda harus melengkapi Business Profile dan Document Verification terlebih dahulu.
+                </p>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    href="/profil-bisnis"
+                    className="rounded-lg bg-blue-500 px-5 py-3 font-medium text-white transition hover:bg-blue-600"
+                  >
+                    Lengkapi Business Profile
+                  </Link>
+
+                  <Link
+                    href="/verifikasi-dokumen"
+                    className="rounded-lg border border-border px-5 py-3 font-medium text-foreground transition hover:bg-muted"
+                  >
+                    Upload Dokumen
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -83,7 +126,7 @@ function AdminPackageManagePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {adminPackages.map((pkg) => (
+              {packages.map((pkg) => (
                 <TableRow key={pkg.id}>
                   <TableCell className="font-medium">{pkg.id}</TableCell>
                   <TableCell>{pkg.packageName}</TableCell>
@@ -104,7 +147,11 @@ function AdminPackageManagePage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button variant="outline" size="sm" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                    >
                       Detail
                     </Button>
                   </TableCell>
@@ -114,66 +161,6 @@ function AdminPackageManagePage() {
           </Table>
         </div>
       </div>
-    </DashboardLayout>
-  );
-}
-
-export default function PackageManagePage() {
-  const currentUser = useMemo(() => getAuthSessionFromBrowser(), []);
-
-  if (currentUser?.role === "admin") {
-    return <AdminPackageManagePage />;
-  }
-
-  const isActivated = currentUser?.accountStatus === "Activated";
-
-  if (!isActivated) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-6">
-          <h1 className="text-2xl font-bold text-foreground">My Tour Package</h1>
-
-          <div className="rounded-2xl border border-border bg-background p-8 shadow-sm">
-            <div className="flex items-start gap-4">
-              <div className="rounded-full bg-yellow-100 p-3">
-                <Lock className="h-6 w-6 text-yellow-600" />
-              </div>
-
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">
-                  Fitur upload paket masih terkunci
-                </h2>
-                <p className="mt-2 max-w-2xl text-muted-foreground">
-                  Sebelum dapat mengupload konten destinasi atau paket wisata, Anda harus
-                  melengkapi Business Profile dan Document Verification terlebih dahulu.
-                </p>
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href="/profil-bisnis"
-                    className="rounded-lg bg-blue-500 px-5 py-3 font-medium text-white transition hover:bg-blue-600"
-                  >
-                    Lengkapi Business Profile
-                  </Link>
-
-                  <Link
-                    href="/verifikasi-dokumen"
-                    className="rounded-lg border border-border px-5 py-3 font-medium text-foreground transition hover:bg-muted"
-                  >
-                    Upload Dokumen
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  return (
-    <DashboardLayout>
-      <PartnerTourPackageManager />
     </DashboardLayout>
   );
 }
