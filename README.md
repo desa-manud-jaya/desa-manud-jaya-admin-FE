@@ -1,4 +1,4 @@
-# admin-dashboard-manud-jaya-FE
+# Admin Dashboard Manud Jaya FE
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
 
