@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
@@ -8,12 +8,10 @@ import { PartnerTourPackageManager } from "@/components/partner/partner-tour-pac
 import { TableFilter } from "@/components/dashboard/table-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getAuthSessionFromBrowser } from "@/lib/auth";
 import {
-  isPartnerActivated,
-  partnerBusinessProfileMock,
-  partnerActivatedBusinessProfileMock,
-} from "@/lib/partner-mock";
+  getAuthSessionFromBrowser,
+  type AuthSession,
+} from "@/lib/auth";
 import {
   Table,
   TableBody,
@@ -55,74 +53,96 @@ const adminPackages = [
 
 function AdminPackageManagePage() {
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-foreground">Daftar Paket Wisata</h1>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-foreground">Daftar Paket Wisata</h1>
 
-        <TableFilter
-          businessTypeOptions={[
-            { value: "all", label: "Semua" },
-            { value: "outdoor", label: "Aktivitas Outdoor" },
-            { value: "homestay", label: "Homestay" },
-            { value: "cafe", label: "Kafe" },
-          ]}
-        />
+      <TableFilter
+        businessTypeOptions={[
+          { value: "all", label: "Semua" },
+          { value: "outdoor", label: "Aktivitas Outdoor" },
+          { value: "homestay", label: "Homestay" },
+          { value: "cafe", label: "Kafe" },
+        ]}
+      />
 
-        <div className="overflow-hidden rounded-lg border border-border bg-background shadow-sm">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="font-semibold">ID</TableHead>
-                <TableHead className="font-semibold">Nama Paket Wisata</TableHead>
-                <TableHead className="font-semibold">Nama Mitra</TableHead>
-                <TableHead className="font-semibold">Jenis Bisnis</TableHead>
-                <TableHead className="font-semibold">Kategori</TableHead>
-                <TableHead className="font-semibold">Harga</TableHead>
-                <TableHead className="font-semibold">Status</TableHead>
-                <TableHead className="font-semibold">Aksi</TableHead>
+      <div className="overflow-hidden rounded-lg border border-border bg-background shadow-sm">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <TableHead className="font-semibold">ID</TableHead>
+              <TableHead className="font-semibold">Nama Paket Wisata</TableHead>
+              <TableHead className="font-semibold">Nama Mitra</TableHead>
+              <TableHead className="font-semibold">Jenis Bisnis</TableHead>
+              <TableHead className="font-semibold">Kategori</TableHead>
+              <TableHead className="font-semibold">Harga</TableHead>
+              <TableHead className="font-semibold">Status</TableHead>
+              <TableHead className="font-semibold">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
+            {adminPackages.map((pkg) => (
+              <TableRow key={pkg.id}>
+                <TableCell className="font-medium">{pkg.id}</TableCell>
+                <TableCell>{pkg.packageName}</TableCell>
+                <TableCell>{pkg.partnerName}</TableCell>
+                <TableCell>{pkg.businessType}</TableCell>
+                <TableCell>{pkg.category}</TableCell>
+                <TableCell>{pkg.price}</TableCell>
+                <TableCell>
+                  <Badge
+                    variant={pkg.status === "active" ? "default" : "destructive"}
+                    className={
+                      pkg.status === "active"
+                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                        : "bg-red-100 text-red-700 hover:bg-red-100"
+                    }
+                  >
+                    {pkg.status === "active" ? "Aktif" : "Tidak Aktif"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                  >
+                    Detail
+                  </Button>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {adminPackages.map((pkg) => (
-                <TableRow key={pkg.id}>
-                  <TableCell className="font-medium">{pkg.id}</TableCell>
-                  <TableCell>{pkg.packageName}</TableCell>
-                  <TableCell>{pkg.partnerName}</TableCell>
-                  <TableCell>{pkg.businessType}</TableCell>
-                  <TableCell>{pkg.category}</TableCell>
-                  <TableCell>{pkg.price}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={pkg.status === "active" ? "default" : "destructive"}
-                      className={
-                        pkg.status === "active"
-                          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                          : "bg-red-100 text-red-700 hover:bg-red-100"
-                      }
-                    >
-                      {pkg.status === "active" ? "Aktif" : "Tidak Aktif"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="outline" size="sm" className="border-blue-600 text-blue-600 hover:bg-blue-50">
-                      Detail
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+            ))}
+          </TableBody>
+        </Table>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }
 
 export default function PackageManagePage() {
-  const currentUser = useMemo(() => getAuthSessionFromBrowser(), []);
+  const [currentUser, setCurrentUser] = useState<AuthSession | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const session = getAuthSessionFromBrowser();
+    setCurrentUser(session);
+    setIsReady(true);
+  }, []);
+
+  if (!isReady) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[300px]" />
+      </DashboardLayout>
+    );
+  }
 
   if (currentUser?.role === "admin") {
-    return <AdminPackageManagePage />;
+    return (
+      <DashboardLayout>
+        <AdminPackageManagePage />
+      </DashboardLayout>
+    );
   }
 
   const isActivated = currentUser?.accountStatus === "Activated";
