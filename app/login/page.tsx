@@ -4,7 +4,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-muted/30">
       <div className="grid min-h-screen lg:grid-cols-2">
-        <section className="hidden lg:flex flex-col justify-between bg-emerald-600 p-10 text-white">
+        <section className="hidden lg:flex flex-col justify-between bg-sky-600 p-10 text-white">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.2em]">
               Desa Manud Jaya

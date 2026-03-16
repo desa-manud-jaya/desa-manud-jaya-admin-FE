@@ -104,7 +104,7 @@ export function AdminLoginForm() {
       console.log("LOGIN SESSION:", session);
 
       setAuthSessionCookie(session);
-      router.replace("/");
+      router.replace("/dashboard");
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -114,7 +114,7 @@ export function AdminLoginForm() {
   return (
     <div className="w-full max-w-md rounded-3xl border border-border bg-background p-8 shadow-sm">
       <div className="mb-8">
-        <p className="text-sm font-medium text-emerald-500">Portal Admin</p>
+        <p className="text-sm font-medium text-sky-500">Portal Admin</p>
         <h1 className="mt-2 text-3xl font-bold text-foreground">
           Masuk ke dashboard
         </h1>
@@ -204,7 +204,7 @@ export function AdminLoginForm() {
           </div>
         )}
 
-        <Button type="submit" className="h-11 w-full" disabled={submitting}>
+        <Button type="submit" className="h-11 w-full bg-sky-600" disabled={submitting}>
           {submitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
