@@ -1,12 +1,19 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { PartnerDashboard } from "@/components/partner/partner-dashboard";
 import { ActivatedPartnerDashboard } from "@/components/partner/activated-partner-dashboard";
-import { getAuthSessionFromBrowser, type AuthSession } from "@/lib/auth";
-import { Users, Package, FileText, AlertTriangle, TrendingUp } from "lucide-react";
+import { useAppSelector } from "@/store/hooks";
+import {
+  Users,
+  Package,
+  FileText,
+  AlertTriangle,
+  TrendingUp,
+} from "lucide-react";
 
 const statsRow1 = [
   {
@@ -106,16 +113,19 @@ function AdminDashboardContent() {
 }
 
 export default function DashboardPage() {
-  const [currentUser, setCurrentUser] = useState<AuthSession | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const router = useRouter();
+
+  const { hydrated, isAuthenticated, loginUser, vendorData } = useAppSelector(
+    (state) => state.auth
+  );
 
   useEffect(() => {
-    const session = getAuthSessionFromBrowser();
-    setCurrentUser(session);
-    setIsReady(true);
-  }, []);
+    if (hydrated && !isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [hydrated, isAuthenticated, router]);
 
-  if (!isReady) {
+  if (!hydrated || !isAuthenticated) {
     return (
       <DashboardLayout>
         <div className="min-h-[300px]" />
@@ -123,10 +133,20 @@ export default function DashboardPage() {
     );
   }
 
+  const isVendor = loginUser?.role === "VENDOR";
+
+  const vendorStatus =
+    vendorData?.status ?? vendorData?.vendorProfile?.approvalStatus ?? null;
+
+  const isVendorActivated =
+    vendorStatus === "APPROVED" ||
+    vendorStatus === "ACTIVATED" ||
+    vendorStatus === "ACTIVE";
+
   return (
     <DashboardLayout>
-      {currentUser?.role === "partner" ? (
-        currentUser.accountStatus === "Activated" ? (
+      {isVendor ? (
+        isVendorActivated ? (
           <ActivatedPartnerDashboard />
         ) : (
           <PartnerDashboard />
