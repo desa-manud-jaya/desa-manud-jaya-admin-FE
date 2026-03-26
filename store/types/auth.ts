@@ -39,6 +39,7 @@ export type AuthState = {
   isAuthenticated: boolean;
   loginUser: LoginResponse | null;
   vendorData: VendorProfileData | null;
+  sessionPassword: string | null;
   loading: boolean;
   error: string | null;
   hydrated: boolean;

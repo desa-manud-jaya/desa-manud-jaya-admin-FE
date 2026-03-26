@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { ApprovalModal } from "@/components/dashboard/approval-modal";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import {
+  getPendingVendorApprovals,
+  approvePendingVendor,
+  rejectPendingVendor,
+} from "@/store/slices/admin-approval-slice";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 type ApprovalAction = "approve" | "reject";
@@ -51,18 +57,6 @@ type DeletionRequestItem = {
   status: ApprovalStatus;
 };
 
-const initialPartnerApprovals: PartnerApprovalItem[] = [
-  {
-    id: "PR2026-004",
-    businessName: "Go Rafting",
-    businessType: "Kafe",
-    requestor: "Cahyo",
-    submissionDate: "09/02/2026",
-    documentStatus: "Semua terunggah",
-    status: "pending",
-  },
-];
-
 const initialTourPackageApprovals: TourPackageApprovalItem[] = [
   {
     id: "TP2026-004",
@@ -91,16 +85,29 @@ const initialDeletionRequests: DeletionRequestItem[] = [
 interface ApprovalTableProps {
   title: string;
   children: React.ReactNode;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
 }
 
-function ApprovalTable({ title, children }: ApprovalTableProps) {
+function ApprovalTable({
+  title,
+  children,
+  searchValue,
+  onSearchChange,
+}: ApprovalTableProps) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-background shadow-sm">
       <div className="flex items-center justify-between border-b border-border p-4">
         <h3 className="font-semibold text-foreground">{title}</h3>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" placeholder="Cari" className="w-[180px] pl-10" />
+          <Input
+            type="search"
+            placeholder="Cari"
+            className="w-[180px] pl-10"
+            value={searchValue ?? ""}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+          />
         </div>
       </div>
       {children}
@@ -133,15 +140,28 @@ function StatusBadge({ status }: { status: ApprovalStatus }) {
 }
 
 export default function ApprovalCenterPage() {
-  const [partnerApprovals, setPartnerApprovals] = useState(
-    initialPartnerApprovals,
-  );
+  const dispatch = useAppDispatch();
+
+  const { loginUser, sessionPassword } = useAppSelector((state) => state.auth);
+  const {
+    pendingVendors,
+    loadingPendingVendors,
+    errorPendingVendors,
+    approvingVendor,
+    rejectingVendor,
+  } = useAppSelector((state) => state.adminApproval);
+
   const [tourPackageApprovals, setTourPackageApprovals] = useState(
     initialTourPackageApprovals,
   );
   const [deletionRequests, setDeletionRequests] = useState(
     initialDeletionRequests,
   );
+
+  const [partnerSearch, setPartnerSearch] = useState("");
+  const [partnerStatusMap, setPartnerStatusMap] = useState<
+    Record<string, ApprovalStatus>
+  >({});
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
@@ -150,6 +170,47 @@ export default function ApprovalCenterPage() {
     section: ApprovalSection;
     id: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (loginUser?.role === "ADMIN") {
+      dispatch(getPendingVendorApprovals());
+    }
+  }, [dispatch, loginUser]);
+
+  useEffect(() => {
+    console.log("APPROVAL CENTER - PENDING VENDORS:", pendingVendors);
+  }, [pendingVendors]);
+
+  const partnerApprovals: PartnerApprovalItem[] = useMemo(() => {
+    return pendingVendors.map((item) => ({
+      id: item.userId,
+      businessName: item.vendorName || "-",
+      businessType: "-",
+      requestor: item.username || "-",
+      submissionDate: "-",
+      documentStatus: "All uploaded",
+      status: partnerStatusMap[item.userId] ?? "pending",
+    }));
+  }, [pendingVendors, partnerStatusMap]);
+
+  const filteredPartnerApprovals = useMemo(() => {
+    const keyword = partnerSearch.trim().toLowerCase();
+
+    if (!keyword) return partnerApprovals;
+
+    return partnerApprovals.filter((item) =>
+      [
+        item.id,
+        item.businessName,
+        item.requestor,
+        item.businessType,
+        item.documentStatus,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [partnerApprovals, partnerSearch]);
 
   const openActionModal = (
     section: ApprovalSection,
@@ -164,30 +225,81 @@ export default function ApprovalCenterPage() {
   const handleConfirm = async (password: string, reason: string) => {
     if (!selectedItem) return;
 
-    const nextStatus: ApprovalStatus =
-      modalType === "approve" ? "approved" : "rejected";
+    const trimmedPassword = password.trim();
+    const trimmedReason = reason.trim();
 
-    console.log("APPROVAL ACTION PAYLOAD:", {
-      section: selectedItem.section,
-      id: selectedItem.id,
-      action: modalType,
-      status: nextStatus,
-      password,
-      reason,
+    if (!trimmedPassword) {
+      alert("Password wajib diisi.");
+      return;
+    }
+
+    if (!trimmedReason) {
+      alert("Reason wajib diisi.");
+      return;
+    }
+
+    if (!sessionPassword) {
+      alert("Session password tidak ditemukan. Silakan login ulang.");
+      return;
+    }
+
+    if (trimmedPassword !== sessionPassword) {
+      alert("Password admin tidak sesuai.");
+      return;
+    }
+
+    console.log("APPROVAL VALIDATION SUCCESS:", {
+      selectedItem,
+      modalType,
+      enteredPassword: trimmedPassword,
+      storedPassword: sessionPassword,
+      reason: trimmedReason,
     });
 
-    // TODO:
-    // Sambungkan ke API:
-    // approve -> PATCH /api/admin/approvals/:id/approve
-    // reject  -> PATCH /api/admin/approvals/:id/reject
-
-    if (selectedItem.section === "partner") {
-      setPartnerApprovals((prev) =>
-        prev.map((item) =>
-          item.id === selectedItem.id ? { ...item, status: nextStatus } : item,
-        ),
+    if (selectedItem.section === "partner" && modalType === "approve") {
+      const resultAction = await dispatch(
+        approvePendingVendor({ userId: selectedItem.id }),
       );
+
+      console.log("APPROVE PARTNER RESULT ACTION:", resultAction);
+
+      if (approvePendingVendor.fulfilled.match(resultAction)) {
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      }
+
+      alert(
+        typeof resultAction.payload === "string"
+          ? resultAction.payload
+          : "Gagal approve vendor",
+      );
+      return;
     }
+
+    if (selectedItem.section === "partner" && modalType === "reject") {
+      const resultAction = await dispatch(
+        rejectPendingVendor({ userId: selectedItem.id }),
+      );
+
+      console.log("REJECT PARTNER RESULT ACTION:", resultAction);
+
+      if (rejectPendingVendor.fulfilled.match(resultAction)) {
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      }
+
+      alert(
+        typeof resultAction.payload === "string"
+          ? resultAction.payload
+          : "Gagal reject vendor",
+      );
+      return;
+    }
+
+    const nextStatus: ApprovalStatus =
+      modalType === "approve" ? "approved" : "rejected";
 
     if (selectedItem.section === "tour") {
       setTourPackageApprovals((prev) =>
@@ -217,7 +329,11 @@ export default function ApprovalCenterPage() {
             A. Antrian Persetujuan Mitra
           </h2>
 
-          <ApprovalTable title="Manajemen Persetujuan">
+          <ApprovalTable
+            title="Manajemen Persetujuan"
+            searchValue={partnerSearch}
+            onSearchChange={setPartnerSearch}
+          >
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
@@ -237,8 +353,23 @@ export default function ApprovalCenterPage() {
               </TableHeader>
 
               <TableBody>
-                {partnerApprovals.length > 0 ? (
-                  partnerApprovals.map((item) => (
+                {loadingPendingVendors ? (
+                  <TableRow>
+                    <TableCell
+                      className="text-center text-muted-foreground"
+                      colSpan={8}
+                    >
+                      Memuat data pending vendor...
+                    </TableCell>
+                  </TableRow>
+                ) : errorPendingVendors ? (
+                  <TableRow>
+                    <TableCell className="text-center text-red-500" colSpan={8}>
+                      {errorPendingVendors}
+                    </TableCell>
+                  </TableRow>
+                ) : filteredPartnerApprovals.length > 0 ? (
+                  filteredPartnerApprovals.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.id}</TableCell>
                       <TableCell>{item.businessName}</TableCell>
@@ -270,9 +401,11 @@ export default function ApprovalCenterPage() {
                             onClick={() =>
                               openActionModal("partner", item.id, "approve")
                             }
-                            disabled={item.status !== "pending"}
+                            disabled={
+                              item.status !== "pending" || approvingVendor
+                            }
                           >
-                            Setujui
+                            {approvingVendor ? "Memproses..." : "Setujui"}
                           </Button>
 
                           <Button
@@ -282,9 +415,11 @@ export default function ApprovalCenterPage() {
                             onClick={() =>
                               openActionModal("partner", item.id, "reject")
                             }
-                            disabled={item.status !== "pending"}
+                            disabled={
+                              item.status !== "pending" || rejectingVendor
+                            }
                           >
-                            Tolak
+                            {rejectingVendor ? "Memproses..." : "Tolak"}
                           </Button>
                         </div>
                       </TableCell>

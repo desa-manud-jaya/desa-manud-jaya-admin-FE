@@ -6,7 +6,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { loginAndFetchVendor } from "@/store/slices/auth-slice";
+import { loginAndFetchUser} from "@/store/slices/auth-slice";
 
 type LoginFormState = {
   username: string;
@@ -88,7 +88,7 @@ export function AdminLoginForm() {
 
     try {
       const resultAction = await dispatch(
-        loginAndFetchVendor({
+        loginAndFetchUser({
           username: form.username,
           password: form.password,
         })
@@ -96,7 +96,7 @@ export function AdminLoginForm() {
 
       console.log("DISPATCH RESULT ACTION:", resultAction);
 
-      if (loginAndFetchVendor.fulfilled.match(resultAction)) {
+      if (loginAndFetchUser.fulfilled.match(resultAction)) {
         console.log("LOGIN + GET /vendor SUCCESS");
         console.log("FULFILLED PAYLOAD:", resultAction.payload);
         console.log("TOKEN FROM THUNK:", resultAction.payload.token);

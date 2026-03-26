@@ -10,7 +10,8 @@ type LoginPayload = {
 type LoginThunkResult = {
   token: string;
   loginUser: LoginResponse;
-  vendorData: VendorProfileData;
+  vendorData: VendorProfileData | null;
+  sessionPassword: string;
 };
 
 const initialState: AuthState = {
@@ -18,14 +19,13 @@ const initialState: AuthState = {
   isAuthenticated: false,
   loginUser: null,
   vendorData: null,
+  sessionPassword: null,
   loading: false,
   error: null,
   hydrated: false,
 };
 
-async function fetchLoginVendor(
-  payload: LoginPayload
-): Promise<LoginResponse> {
+async function fetchLogin(payload: LoginPayload): Promise<LoginResponse> {
   const response = await fetch(
     `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
     {
@@ -60,13 +60,16 @@ async function fetchLoginVendor(
 }
 
 async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
 
   const rawText = await response.text();
 
@@ -81,7 +84,10 @@ async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
   if (!response.ok) {
     const message =
       typeof data === "object" && data !== null && "message" in data
-        ? String((data as { message?: string }).message || "Gagal mengambil data vendor")
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengambil data vendor"
+          )
         : "Gagal mengambil data vendor";
 
     throw new Error(message);
@@ -90,42 +96,40 @@ async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
   return data as VendorProfileData;
 }
 
-export const loginAndFetchVendor = createAsyncThunk<
+export const loginAndFetchUser = createAsyncThunk<
   LoginThunkResult,
   LoginPayload,
   { rejectValue: string }
->("auth/loginAndFetchVendor", async (payload, thunkAPI) => {
+>("auth/loginAndFetchUser", async (payload, thunkAPI) => {
   try {
-    console.log("AUTH SLICE LOGIN PAYLOAD:", payload);
-
-    const loginResult = await fetchLoginVendor(payload);
-
-    console.log("AUTH SLICE LOGIN RESULT:", loginResult);
-
+    const loginResult = await fetchLogin(payload);
     const token = loginResult?.token;
+    const role = loginResult?.role;
 
     if (!token) {
       return thunkAPI.rejectWithValue("Token tidak ditemukan dari login");
     }
 
-    const vendorData = await fetchVendorProfile(token);
+    let vendorData: VendorProfileData | null = null;
 
-    console.log("AUTH SLICE VENDOR RESULT:", vendorData);
+    if (role === "VENDOR") {
+      vendorData = await fetchVendorProfile(token);
+    }
 
     saveAuthToStorage({
       token,
       loginUser: loginResult,
       vendorData,
+      sessionPassword: payload.password,
     });
 
     return {
       token,
       loginUser: loginResult,
       vendorData,
+      sessionPassword: payload.password,
     };
   } catch (error) {
-    console.error("AUTH SLICE LOGIN ERROR:", error);
-
     return thunkAPI.rejectWithValue(
       error instanceof Error ? error.message : "Login gagal"
     );
@@ -142,11 +146,13 @@ const authSlice = createSlice({
         token: string | null;
         loginUser: LoginResponse | null;
         vendorData: VendorProfileData | null;
+        sessionPassword: string | null;
       }>
     ) => {
       state.token = action.payload.token;
       state.loginUser = action.payload.loginUser;
       state.vendorData = action.payload.vendorData;
+      state.sessionPassword = action.payload.sessionPassword;
       state.isAuthenticated = !!action.payload.token;
       state.hydrated = true;
     },
@@ -154,6 +160,7 @@ const authSlice = createSlice({
       state.token = null;
       state.loginUser = null;
       state.vendorData = null;
+      state.sessionPassword = null;
       state.isAuthenticated = false;
       state.loading = false;
       state.error = null;
@@ -164,20 +171,21 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(loginAndFetchVendor.pending, (state) => {
+      .addCase(loginAndFetchUser.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(loginAndFetchVendor.fulfilled, (state, action) => {
+      .addCase(loginAndFetchUser.fulfilled, (state, action) => {
         state.loading = false;
         state.error = null;
         state.token = action.payload.token;
         state.loginUser = action.payload.loginUser;
         state.vendorData = action.payload.vendorData;
+        state.sessionPassword = action.payload.sessionPassword;
         state.isAuthenticated = true;
         state.hydrated = true;
       })
-      .addCase(loginAndFetchVendor.rejected, (state, action) => {
+      .addCase(loginAndFetchUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || "Login gagal";
         state.isAuthenticated = false;
