@@ -19,7 +19,9 @@ export type TourPackageFormValue = {
   includedItems: string[];
   requiredDocumentLabel: string;
   requiredDocumentFileName: string;
+  requiredDocumentFile: File | null;
   coverImageName: string;
+  coverImageFile: File | null;
   imageUrl?: string;
   termsAndConditions?: string;
   pricingPolicy?: string;
@@ -50,7 +52,7 @@ type TourPackageFormModalProps = {
   onOpenChange: (open: boolean) => void;
   mode: TourPackageActionMode;
   initialData?: TourPackageFormValue | null;
-  onComplete: (payload: TourPackageCompletePayload) => void;
+  onComplete: (payload: TourPackageCompletePayload) => void | Promise<void>;
 };
 
 type TourPackageErrors = Partial<
@@ -62,7 +64,9 @@ type TourPackageErrors = Partial<
     | "availability"
     | "itineraryItems"
     | "includedItems"
-    | "requiredDocumentLabel",
+    | "requiredDocumentLabel"
+    | "requiredDocumentFile"
+    | "coverImageFile",
     string
   >
 >;
@@ -97,7 +101,9 @@ const emptyForm: TourPackageFormValue = {
   includedItems: [""],
   requiredDocumentLabel: "Document",
   requiredDocumentFileName: "",
+  requiredDocumentFile: null,
   coverImageName: "",
+  coverImageFile: null,
   imageUrl: "",
   termsAndConditions: "",
   pricingPolicy: "",
@@ -143,6 +149,10 @@ function formatCurrencyPreview(value: string) {
   return `IDR ${Number(normalized).toLocaleString("id-ID")}`;
 }
 
+function getDigitsOnly(value: string) {
+  return value.replace(/[^\d]/g, "");
+}
+
 export function TourPackageFormModal({
   open,
   onOpenChange,
@@ -167,6 +177,8 @@ export function TourPackageFormModal({
   });
   const [pendingPayload, setPendingPayload] =
     useState<TourPackageCompletePayload | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const isDeleteMode = mode === "delete";
   const isViewMode = mode === "view";
@@ -203,6 +215,8 @@ export function TourPackageFormModal({
     setConfirmState({ open: false, title: "", description: "" });
     setSuccessState({ open: false, title: "", description: "" });
     setPendingPayload(null);
+    setSubmitting(false);
+    setSubmitError(null);
   }, [open, mode, initialData]);
 
   const handleChange = (field: keyof TourPackageFormValue, value: string) => {
@@ -220,7 +234,7 @@ export function TourPackageFormModal({
   const handleArrayChange = (
     field: "itineraryItems" | "includedItems",
     index: number,
-    value: string
+    value: string,
   ) => {
     if (isReadOnly) return;
 
@@ -272,18 +286,31 @@ export function TourPackageFormModal({
       if (!form.availability.trim())
         nextErrors.availability = "Please enter your package availability.";
 
-      if (form.itineraryItems.filter((item) => item.trim() !== "").length === 0) {
-        nextErrors.itineraryItems =
-          "Please enter your tour package itinerary.";
+      if (
+        form.itineraryItems.filter((item) => item.trim() !== "").length === 0
+      ) {
+        nextErrors.itineraryItems = "Please enter your tour package itinerary.";
       }
 
-      if (form.includedItems.filter((item) => item.trim() !== "").length === 0) {
+      if (
+        form.includedItems.filter((item) => item.trim() !== "").length === 0
+      ) {
         nextErrors.includedItems = "Please enter your tour package included.";
       }
     }
 
     if (!form.requiredDocumentLabel.trim()) {
-      nextErrors.requiredDocumentLabel = "Please enter required document label.";
+      nextErrors.requiredDocumentLabel =
+        "Please enter required document label.";
+    }
+    if (mode === "create") {
+      if (!form.requiredDocumentFile) {
+        nextErrors.requiredDocumentFile = "Please upload required document.";
+      }
+
+      if (!form.coverImageFile) {
+        nextErrors.coverImageFile = "Please upload cover image.";
+      }
     }
 
     return nextErrors;
@@ -328,36 +355,48 @@ export function TourPackageFormModal({
     });
   };
 
-  const handleConfirmYes = () => {
+  const handleConfirmYes = async () => {
     if (!pendingPayload) return;
 
-    console.log("PARTNER TOUR PACKAGE FORM VALUES:", form);
-    console.log("PARTNER TOUR PACKAGE API PAYLOAD:", pendingPayload);
+    try {
+      setSubmitting(true);
+      setSubmitError(null);
 
-    onComplete(pendingPayload);
-    setConfirmState((prev) => ({ ...prev, open: false }));
+      console.log("PARTNER TOUR PACKAGE FORM VALUES:", form);
+      console.log("PARTNER TOUR PACKAGE API PAYLOAD:", pendingPayload);
 
-    if (pendingPayload.action === "create") {
-      setSuccessState({
-        open: true,
-        title: "Successfully added",
-        description:
-          "Verification takes 1–2 business days after submission. Admin will notify you via email once your package is approved.",
-      });
-    } else if (pendingPayload.action === "edit") {
-      setSuccessState({
-        open: true,
-        title: "Successfully updated",
-        description:
-          "Verification takes 1–2 business days after submission. Admin will notify you via email once your package update is approved.",
-      });
-    } else {
-      setSuccessState({
-        open: true,
-        title: "Deletion request submitted",
-        description:
-          "Verification takes 1–2 business days after submission. Admin will notify you via email once your deletion request is approved.",
-      });
+      await onComplete(pendingPayload);
+
+      setConfirmState((prev) => ({ ...prev, open: false }));
+
+      if (pendingPayload.action === "create") {
+        setSuccessState({
+          open: true,
+          title: "Successfully added",
+          description:
+            "Verification takes 1–2 business days after submission. Admin will notify you via email once your package is approved.",
+        });
+      } else if (pendingPayload.action === "edit") {
+        setSuccessState({
+          open: true,
+          title: "Successfully updated",
+          description:
+            "Verification takes 1–2 business days after submission. Admin will notify you via email once your package update is approved.",
+        });
+      } else {
+        setSuccessState({
+          open: true,
+          title: "Deletion request submitted",
+          description:
+            "Verification takes 1–2 business days after submission. Admin will notify you via email once your deletion request is approved.",
+        });
+      }
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Gagal submit package",
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -370,7 +409,7 @@ export function TourPackageFormModal({
   const renderArrayField = (
     label: string,
     field: "itineraryItems" | "includedItems",
-    error?: string
+    error?: string,
   ) => (
     <div>
       <label className="mb-2 block text-sm font-medium">{label}</label>
@@ -389,8 +428,8 @@ export function TourPackageFormModal({
                     ? "Enter your tour package itinerary"
                     : "Add itinerary item"
                   : index === 0
-                  ? "Enter your tour package included"
-                  : "Add included item"
+                    ? "Enter your tour package included"
+                    : "Add included item"
               }
               className="h-10 w-full rounded-lg border border-border px-3 text-sm outline-none focus:border-blue-400 disabled:bg-muted disabled:text-muted-foreground"
             />
@@ -434,10 +473,10 @@ export function TourPackageFormModal({
           {mode === "create"
             ? "Add New Tour Package"
             : mode === "edit"
-            ? "Edit Tour Package"
-            : mode === "delete"
-            ? "Delete Tour Package"
-            : "Tour Package Details"}
+              ? "Edit Tour Package"
+              : mode === "delete"
+                ? "Delete Tour Package"
+                : "Tour Package Details"}
         </DialogTitle>
 
         <button
@@ -455,10 +494,10 @@ export function TourPackageFormModal({
                 {mode === "create"
                   ? "Add New Tour Package"
                   : mode === "edit"
-                  ? "Edit Tour Package"
-                  : mode === "delete"
-                  ? "Delete Tour Package"
-                  : "Tour Package Details"}
+                    ? "Edit Tour Package"
+                    : mode === "delete"
+                      ? "Delete Tour Package"
+                      : "Tour Package Details"}
               </h2>
 
               {form.approvalStatus && (
@@ -502,6 +541,11 @@ export function TourPackageFormModal({
             <p className="text-base text-muted-foreground">
               {form.coverImageName || "Upload cover image"}
             </p>
+            {errors.coverImageFile && (
+              <p className="mt-2 text-sm text-red-500">
+                {errors.coverImageFile}
+              </p>
+            )}
 
             {!isViewMode && (
               <input
@@ -512,7 +556,18 @@ export function TourPackageFormModal({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  handleChange("coverImageName", file.name);
+
+                  setForm((prev) => ({
+                    ...prev,
+                    coverImageName: file.name,
+                    coverImageFile: file,
+                  }));
+
+                  setErrors((prev) => ({
+                    ...prev,
+                    coverImageFile: undefined,
+                  }));
+
                   console.log("TOUR PACKAGE COVER IMAGE:", file);
                 }}
               />
@@ -563,10 +618,16 @@ export function TourPackageFormModal({
                 <label className="mb-2 block text-sm font-medium">
                   Price (per person)*
                 </label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Numbers only
+                </p>
                 <input
                   value={form.price}
                   disabled={isReadOnly}
-                  onChange={(e) => handleChange("price", e.target.value)}
+                  inputMode="numeric"
+                  onChange={(e) =>
+                    handleChange("price", getDigitsOnly(e.target.value))
+                  }
                   placeholder="Enter your tour package price"
                   className={getInputClassName(isReadOnly)}
                 />
@@ -582,10 +643,16 @@ export function TourPackageFormModal({
                 <label className="mb-2 block text-sm font-medium">
                   Duration*
                 </label>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Enter number of days only
+                </p>
                 <input
                   value={form.duration}
                   disabled={isReadOnly}
-                  onChange={(e) => handleChange("duration", e.target.value)}
+                  inputMode="numeric"
+                  onChange={(e) =>
+                    handleChange("duration", getDigitsOnly(e.target.value))
+                  }
                   placeholder="Enter your tour package duration"
                   className={getInputClassName(isReadOnly)}
                 />
@@ -598,10 +665,16 @@ export function TourPackageFormModal({
                 <label className="mb-2 block text-sm font-medium">
                   Availability*
                 </label>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Enter available quota only
+                </p>
                 <input
                   value={form.availability}
                   disabled={isReadOnly}
-                  onChange={(e) => handleChange("availability", e.target.value)}
+                  inputMode="numeric"
+                  onChange={(e) =>
+                    handleChange("availability", getDigitsOnly(e.target.value))
+                  }
                   placeholder="Enter your tour package availability"
                   className={getInputClassName(isReadOnly)}
                 />
@@ -634,7 +707,9 @@ export function TourPackageFormModal({
                 <textarea
                   value={form.pricingPolicy ?? ""}
                   disabled={isReadOnly}
-                  onChange={(e) => handleChange("pricingPolicy", e.target.value)}
+                  onChange={(e) =>
+                    handleChange("pricingPolicy", e.target.value)
+                  }
                   placeholder="Enter pricing policy"
                   className="min-h-[110px] w-full rounded-xl border border-blue-300 bg-background px-4 py-3 text-sm outline-none transition focus:border-blue-500 disabled:bg-muted disabled:text-muted-foreground"
                 />
@@ -660,13 +735,13 @@ export function TourPackageFormModal({
               {renderArrayField(
                 "Itinerary*",
                 "itineraryItems",
-                errors.itineraryItems
+                errors.itineraryItems,
               )}
 
               {renderArrayField(
                 "Included*",
                 "includedItems",
-                errors.includedItems
+                errors.includedItems,
               )}
 
               <div>
@@ -705,7 +780,18 @@ export function TourPackageFormModal({
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        handleChange("requiredDocumentFileName", file.name);
+
+                        setForm((prev) => ({
+                          ...prev,
+                          requiredDocumentFileName: file.name,
+                          requiredDocumentFile: file,
+                        }));
+
+                        setErrors((prev) => ({
+                          ...prev,
+                          requiredDocumentFile: undefined,
+                        }));
+
                         console.log("TOUR PACKAGE REQUIRED DOCUMENT:", file);
                       }}
                     />
@@ -727,6 +813,11 @@ export function TourPackageFormModal({
                   >
                     Open uploaded document
                   </a>
+                )}
+                {errors.requiredDocumentFile && (
+                  <p className="mt-2 text-sm text-red-500">
+                    {errors.requiredDocumentFile}
+                  </p>
                 )}
 
                 {errors.requiredDocumentLabel && (
@@ -795,12 +886,17 @@ export function TourPackageFormModal({
                 {confirmState.description}
               </p>
 
+              {submitError && (
+                <p className="mt-3 text-sm text-red-500">{submitError}</p>
+              )}
+
               <div className="mt-5 flex gap-3">
                 <Button
                   className="flex-1 bg-blue-500 hover:bg-blue-600"
                   onClick={handleConfirmYes}
+                  disabled={submitting}
                 >
-                  Yes
+                  {submitting ? "Submitting..." : "Yes"}
                 </Button>
 
                 <Button
@@ -809,6 +905,7 @@ export function TourPackageFormModal({
                   onClick={() =>
                     setConfirmState((prev) => ({ ...prev, open: false }))
                   }
+                  disabled={submitting}
                 >
                   Cancel
                 </Button>

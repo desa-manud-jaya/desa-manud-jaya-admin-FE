@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Clock3,
   Image as ImageIcon,
@@ -109,7 +109,9 @@ function mapApiPackageToFormValue(
     includedItems: item.included ?? [""],
     requiredDocumentLabel: "Required Document",
     requiredDocumentFileName: "",
+    requiredDocumentFile: null,
     coverImageName: "",
+    coverImageFile: null,
     imageUrl: item.photoUrl ?? "",
     termsAndConditions: item.termsAndConditions ?? "",
     pricingPolicy: item.pricingPolicy ?? "",
@@ -180,6 +182,179 @@ async function fetchVendorPackages(
 
   return data as VendorPackageApiItem[];
 }
+async function createVendorPackage(
+  token: string,
+  businessId: string,
+  values: TourPackageFormValue,
+): Promise<VendorPackageApiItem> {
+  if (!values.requiredDocumentFile) {
+    throw new Error("Required document belum dipilih");
+  }
+
+  if (!values.coverImageFile) {
+    throw new Error("Photo belum dipilih");
+  }
+
+  const dataPayload = {
+    termsAndConditions: values.termsAndConditions?.trim() ?? "",
+    price: Number(normalizeNumberString(values.price)),
+    itinerary: values.itineraryItems.filter((item) => item.trim() !== ""),
+    name: values.title.trim(),
+    duration: Number(normalizeNumberString(values.duration)),
+    cancellationPolicy: values.cancellationPolicy?.trim() ?? "",
+    pricingPolicy: values.pricingPolicy?.trim() ?? "",
+    availability: Number(normalizeNumberString(values.availability)),
+    included: values.includedItems.filter((item) => item.trim() !== ""),
+    category: values.category,
+  };
+
+  const formData = new FormData();
+
+  formData.append(
+    "data",
+    new Blob([JSON.stringify(dataPayload)], {
+      type: "application/json",
+    }),
+  );
+
+  formData.append(
+    "requirementDocument",
+    values.requiredDocumentFile,
+    values.requiredDocumentFile.name,
+  );
+
+  formData.append("photo", values.coverImageFile, values.coverImageFile.name);
+
+  console.log("CREATE PACKAGE DATA PAYLOAD:", dataPayload);
+  console.log(
+    "CREATE PACKAGE REQUIREMENT DOCUMENT:",
+    values.requiredDocumentFile,
+  );
+  console.log("CREATE PACKAGE PHOTO:", values.coverImageFile);
+
+  for (const [key, value] of formData.entries()) {
+    console.log("FORM DATA ENTRY:", key, value);
+  }
+
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor/businesses/${businessId}/packages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      body: formData,
+    },
+  );
+
+   const rawText = await response.text();
+
+  console.log("POST PACKAGE RAW TEXT RESPONSE:", rawText);
+
+  let data: unknown = null;
+
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = rawText;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String((data as { message?: string }).message || "Gagal submit package")
+        : typeof data === "string" && data.trim() !== ""
+        ? data
+        : "Gagal submit package";
+
+    throw new Error(message);
+  }
+
+  return data as VendorPackageApiItem;
+}
+
+// async function createVendorPackage(
+//   token: string,
+//   businessId: string,
+//   values: TourPackageFormValue,
+// ): Promise<VendorPackageApiItem> {
+//   if (!values.requiredDocumentFile) {
+//     throw new Error("Required document belum dipilih");
+//   }
+
+//   if (!values.coverImageFile) {
+//     throw new Error("Photo belum dipilih");
+//   }
+
+//   const dataPayload = {
+//     termsAndConditions: values.termsAndConditions?.trim() ?? "",
+//     price: Number(normalizeNumberString(values.price)),
+//     itinerary: values.itineraryItems.filter((item) => item.trim() !== ""),
+//     name: values.title.trim(),
+//     duration: Number(normalizeNumberString(values.duration)),
+//     cancellationPolicy: values.cancellationPolicy?.trim() ?? "",
+//     pricingPolicy: values.pricingPolicy?.trim() ?? "",
+//     availability: Number(normalizeNumberString(values.availability)),
+//     included: values.includedItems.filter((item) => item.trim() !== ""),
+//     category: values.category,
+//   };
+
+//   const formData = new FormData();
+//   formData.append("data", JSON.stringify(dataPayload));
+//   formData.append("requirementDocument", values.requiredDocumentFile);
+//   formData.append("photo", values.coverImageFile);
+
+//   console.log("CREATE PACKAGE DATA PAYLOAD:", dataPayload);
+//   console.log(
+//     "CREATE PACKAGE REQUIREMENT DOCUMENT:",
+//     values.requiredDocumentFile,
+//   );
+//   console.log("CREATE PACKAGE PHOTO:", values.coverImageFile);
+
+//   const response = await fetch(
+//     `${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor/businesses/${businessId}/packages`,
+//     {
+//       method: "POST",
+//       headers: {
+//         Authorization: `Bearer ${token}`,
+//       },
+//       body: formData,
+//     },
+//   );
+
+//   const rawText = await response.text();
+
+//   let data: unknown = null;
+
+//   try {
+//     data = rawText ? JSON.parse(rawText) : null;
+//     console.log(
+//       "POST /vendor/businesses/{businessId}/packages RESPONSE:",
+//       data,
+//     );
+//   } catch {
+//     throw new Error(
+//       "Response POST /vendor/businesses/{businessId}/packages tidak valid",
+//     );
+//   }
+
+//   if (!response.ok) {
+//     const message =
+//       typeof data === "object" && data !== null && "message" in data
+//         ? String(
+//             (data as { message?: string }).message ||
+//               "Gagal menambahkan tour package",
+//           )
+//         : "Gagal menambahkan tour package";
+
+//     throw new Error(message);
+//   }
+
+//   return data as VendorPackageApiItem;
+// }
 
 export function PartnerTourPackageManager() {
   const token = useAppSelector((state) => state.auth.token);
@@ -194,47 +369,39 @@ export function PartnerTourPackageManager() {
     useState<TourPackageFormValue | null>(null);
   const [actionMode, setActionMode] = useState<TourPackageActionMode>("create");
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadPackages = useCallback(async () => {
+    if (!token || !businessId) {
+      setPackages([]);
+      setPackagesError(null);
+      return;
+    }
 
-    const loadPackages = async () => {
-      if (!token || !businessId) {
-        if (!isMounted) return;
-        setPackages([]);
-        setPackagesError(null);
-        return;
-      }
+    try {
+      setLoadingPackages(true);
+      setPackagesError(null);
 
-      try {
-        setLoadingPackages(true);
-        setPackagesError(null);
+      const apiPackages = await fetchVendorPackages(token, businessId);
+      console.log("API PACKAGES:", apiPackages);
 
-        const apiPackages = await fetchVendorPackages(token, businessId);
-        const mappedPackages = apiPackages.map(mapApiPackageToFormValue);
+      const mappedPackages = apiPackages.map(mapApiPackageToFormValue);
+      console.log("MAPPED PACKAGES:", mappedPackages);
 
-        if (!isMounted) return;
-        setPackages(mappedPackages);
-      } catch (error) {
-        if (!isMounted) return;
-
-        setPackages([]);
-        setPackagesError(
-          error instanceof Error
-            ? error.message
-            : "Gagal mengambil data tour package",
-        );
-      } finally {
-        if (!isMounted) return;
-        setLoadingPackages(false);
-      }
-    };
-
-    loadPackages();
-
-    return () => {
-      isMounted = false;
-    };
+      setPackages(mappedPackages);
+    } catch (error) {
+      setPackages([]);
+      setPackagesError(
+        error instanceof Error
+          ? error.message
+          : "Gagal mengambil data tour package",
+      );
+    } finally {
+      setLoadingPackages(false);
+    }
   }, [token, businessId]);
+
+  useEffect(() => {
+    loadPackages();
+  }, [loadPackages]);
 
   const featuredPackage = useMemo(() => packages[0] ?? null, [packages]);
 
@@ -279,12 +446,21 @@ export function PartnerTourPackageManager() {
     setRequests((prev) => [newRecord, ...prev]);
   };
 
-  const handleCompleteAction = ({
+  const handleCompleteAction = async ({
     action,
     values,
   }: TourPackageCompletePayload) => {
     if (action === "create") {
-      setPackages((prev) => [...prev, values]);
+      if (!token) {
+        throw new Error("Token tidak ditemukan");
+      }
+
+      if (!businessId) {
+        throw new Error("Business ID tidak ditemukan");
+      }
+
+      await createVendorPackage(token, businessId, values);
+      await loadPackages();
       addRequestRecord(values, "ADD NEW");
       return;
     }

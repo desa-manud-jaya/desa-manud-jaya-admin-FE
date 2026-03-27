@@ -57,18 +57,34 @@ type DeletionRequestItem = {
   status: ApprovalStatus;
 };
 
-const initialTourPackageApprovals: TourPackageApprovalItem[] = [
-  {
-    id: "TP2026-004",
-    packageName: "Cool Rafting",
-    partnerName: "Go Rafting",
-    requestor: "Cahyo",
-    category: "Eco",
-    price: "Rp 800.000",
-    submissionDate: "09/02/2026",
-    status: "pending",
-  },
-];
+type PendingTourPackageApiItem = {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  duration: number;
+  availability: number;
+  itinerary: string[];
+  included: string[];
+  termsAndConditions: string;
+  pricingPolicy: string;
+  cancellationPolicy: string;
+  requirementDocumentUrl: string | null;
+  photoUrl: string | null;
+  approvalStatus: string;
+  vendorId: string;
+  businessId: string;
+  rejectionReason: string | null;
+  moderationNote: string | null;
+  deletionRequestStatus: string;
+  deletionRequestReason: string | null;
+  deletionReviewNote: string | null;
+  deletionReviewerId: string | null;
+  deletionRequestedAt: string | null;
+  deletionReviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const initialDeletionRequests: DeletionRequestItem[] = [
   {
@@ -81,6 +97,80 @@ const initialDeletionRequests: DeletionRequestItem[] = [
     status: "pending",
   },
 ];
+
+function formatCurrency(value: number) {
+  return `Rp ${value.toLocaleString("id-ID")}`;
+}
+
+function formatSubmissionDate(value: string) {
+  if (!value) return "-";
+
+  return new Date(value).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatCategoryLabel(value: string) {
+  if (!value) return "-";
+
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((item) => item.charAt(0).toUpperCase() + item.slice(1))
+    .join(" ");
+}
+
+function mapApprovalStatus(value: string): ApprovalStatus {
+  if (value === "APPROVED") return "approved";
+  if (value === "REJECTED") return "rejected";
+  return "pending";
+}
+
+async function fetchPendingTourPackages(
+  token: string,
+): Promise<PendingTourPackageApiItem[]> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/packages/pending`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  const rawText = await response.text();
+
+  let data: unknown = null;
+
+  try {
+    data = rawText ? JSON.parse(rawText) : [];
+    console.log("GET /admin/packages/pending RESPONSE:", data);
+  } catch {
+    throw new Error("Response /admin/packages/pending tidak valid");
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengambil data pending package",
+          )
+        : "Gagal mengambil data pending package";
+
+    throw new Error(message);
+  }
+
+  if (!Array.isArray(data)) {
+    throw new Error("Format data pending package tidak sesuai");
+  }
+
+  return data as PendingTourPackageApiItem[];
+}
 
 interface ApprovalTableProps {
   title: string;
@@ -139,10 +229,102 @@ function StatusBadge({ status }: { status: ApprovalStatus }) {
   );
 }
 
+async function parseApiResponse(response: Response) {
+  const rawText = await response.text();
+
+  console.log("RAW API RESPONSE TEXT:", rawText);
+
+  if (!rawText) {
+    return null;
+  }
+
+  try {
+    const jsonData = JSON.parse(rawText);
+    console.log("PARSED API RESPONSE JSON:", jsonData);
+    return jsonData;
+  } catch {
+    return rawText;
+  }
+}
+
+function getApiErrorMessage(data: unknown, fallbackMessage: string): string {
+  if (typeof data === "object" && data !== null && "message" in data) {
+    return String((data as { message?: string }).message || fallbackMessage);
+  }
+
+  if (typeof data === "string" && data.trim() !== "") {
+    return data;
+  }
+
+  return fallbackMessage;
+}
+
+async function approvePendingTourPackage(
+  token: string,
+  id: string,
+  reason: string,
+) {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/packages/${id}/approve`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    },
+  );
+  const data = await parseApiResponse(response);
+
+  console.log("APPROVE TOUR PACKAGE RESPONSE:", data);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(data, "Gagal approve package"));
+  }
+
+  return data;
+}
+
+async function rejectPendingTourPackage(
+  token: string,
+  id: string,
+  reason: string,
+) {
+  const encodedReason = encodeURIComponent(reason.trim());
+
+  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/packages/${id}/reject?reason=${encodedReason}`;
+
+  console.log("REJECT TOUR PACKAGE REQUEST:", {
+    url,
+    id,
+    reason,
+  });
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  const data = await parseApiResponse(response);
+
+  console.log("REJECT TOUR PACKAGE RESPONSE:", data);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(data, "Gagal reject package"));
+  }
+
+  return data;
+}
+
 export default function ApprovalCenterPage() {
   const dispatch = useAppDispatch();
 
-  const { loginUser, sessionPassword } = useAppSelector((state) => state.auth);
+  const { loginUser, sessionPassword, token } = useAppSelector(
+    (state) => state.auth,
+  );
   const {
     pendingVendors,
     loadingPendingVendors,
@@ -151,12 +333,19 @@ export default function ApprovalCenterPage() {
     rejectingVendor,
   } = useAppSelector((state) => state.adminApproval);
 
-  const [tourPackageApprovals, setTourPackageApprovals] = useState(
-    initialTourPackageApprovals,
-  );
+  const [tourPackageApprovals, setTourPackageApprovals] = useState<
+    TourPackageApprovalItem[]
+  >([]);
+  const [loadingPendingTourPackages, setLoadingPendingTourPackages] =
+    useState(false);
+  const [errorPendingTourPackages, setErrorPendingTourPackages] = useState<
+    string | null
+  >(null);
   const [deletionRequests, setDeletionRequests] = useState(
     initialDeletionRequests,
   );
+  const [approvingTourPackage, setApprovingTourPackage] = useState(false);
+  const [rejectingTourPackage, setRejectingTourPackage] = useState(false);
 
   const [partnerSearch, setPartnerSearch] = useState("");
   const [partnerStatusMap, setPartnerStatusMap] = useState<
@@ -180,6 +369,61 @@ export default function ApprovalCenterPage() {
   useEffect(() => {
     console.log("APPROVAL CENTER - PENDING VENDORS:", pendingVendors);
   }, [pendingVendors]);
+
+  useEffect(() => {
+    if (loginUser?.role !== "ADMIN" || !token) {
+      setTourPackageApprovals([]);
+      setErrorPendingTourPackages(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadPendingTourPackages = async () => {
+      try {
+        setLoadingPendingTourPackages(true);
+        setErrorPendingTourPackages(null);
+
+        const packages = await fetchPendingTourPackages(token);
+
+        const mappedPackages: TourPackageApprovalItem[] = packages.map(
+          (item) => ({
+            id: item.id,
+            packageName: item.name || "-",
+            partnerName: "-",
+            requestor: "-",
+            category: formatCategoryLabel(item.category),
+            price: formatCurrency(item.price),
+            submissionDate: formatSubmissionDate(item.createdAt),
+            status: mapApprovalStatus(item.approvalStatus),
+          }),
+        );
+
+        console.log("MAPPED PENDING TOUR PACKAGES:", mappedPackages);
+
+        if (!isMounted) return;
+        setTourPackageApprovals(mappedPackages);
+      } catch (error) {
+        if (!isMounted) return;
+
+        setTourPackageApprovals([]);
+        setErrorPendingTourPackages(
+          error instanceof Error
+            ? error.message
+            : "Gagal mengambil data pending package",
+        );
+      } finally {
+        if (!isMounted) return;
+        setLoadingPendingTourPackages(false);
+      }
+    };
+
+    loadPendingTourPackages();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loginUser, token]);
 
   const partnerApprovals: PartnerApprovalItem[] = useMemo(() => {
     return pendingVendors.map((item) => ({
@@ -298,16 +542,60 @@ export default function ApprovalCenterPage() {
       return;
     }
 
+    if (selectedItem.section === "tour" && modalType === "approve") {
+      if (!token) {
+        alert("Token admin tidak ditemukan. Silakan login ulang.");
+        return;
+      }
+
+      try {
+        setApprovingTourPackage(true);
+
+        await approvePendingTourPackage(token, selectedItem.id, trimmedReason);
+
+        setTourPackageApprovals((prev) =>
+          prev.filter((item) => item.id !== selectedItem.id),
+        );
+
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Gagal approve package");
+        return;
+      } finally {
+        setApprovingTourPackage(false);
+      }
+    }
+
+    if (selectedItem.section === "tour" && modalType === "reject") {
+      if (!token) {
+        alert("Token admin tidak ditemukan. Silakan login ulang.");
+        return;
+      }
+
+      try {
+        setRejectingTourPackage(true);
+
+        await rejectPendingTourPackage(token, selectedItem.id, trimmedReason);
+
+        setTourPackageApprovals((prev) =>
+          prev.filter((item) => item.id !== selectedItem.id),
+        );
+
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Gagal reject package");
+        return;
+      } finally {
+        setRejectingTourPackage(false);
+      }
+    }
+
     const nextStatus: ApprovalStatus =
       modalType === "approve" ? "approved" : "rejected";
-
-    if (selectedItem.section === "tour") {
-      setTourPackageApprovals((prev) =>
-        prev.map((item) =>
-          item.id === selectedItem.id ? { ...item, status: nextStatus } : item,
-        ),
-      );
-    }
 
     if (selectedItem.section === "deletion") {
       setDeletionRequests((prev) =>
@@ -464,7 +752,22 @@ export default function ApprovalCenterPage() {
               </TableHeader>
 
               <TableBody>
-                {tourPackageApprovals.length > 0 ? (
+                {loadingPendingTourPackages ? (
+                  <TableRow>
+                    <TableCell
+                      className="text-center text-muted-foreground"
+                      colSpan={9}
+                    >
+                      Memuat data pending package...
+                    </TableCell>
+                  </TableRow>
+                ) : errorPendingTourPackages ? (
+                  <TableRow>
+                    <TableCell className="text-center text-red-500" colSpan={9}>
+                      {errorPendingTourPackages}
+                    </TableCell>
+                  </TableRow>
+                ) : tourPackageApprovals.length > 0 ? (
                   tourPackageApprovals.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.id}</TableCell>
@@ -493,9 +796,11 @@ export default function ApprovalCenterPage() {
                             onClick={() =>
                               openActionModal("tour", item.id, "approve")
                             }
-                            disabled={item.status !== "pending"}
+                            disabled={
+                              item.status !== "pending" || approvingTourPackage
+                            }
                           >
-                            Setujui
+                            {approvingTourPackage ? "Memproses..." : "Setujui"}
                           </Button>
 
                           <Button
@@ -505,9 +810,11 @@ export default function ApprovalCenterPage() {
                             onClick={() =>
                               openActionModal("tour", item.id, "reject")
                             }
-                            disabled={item.status !== "pending"}
+                            disabled={
+                              item.status !== "pending" || rejectingTourPackage
+                            }
                           >
-                            Tolak
+                            {rejectingTourPackage ? "Memproses..." : "Tolak"}
                           </Button>
                         </div>
                       </TableCell>
