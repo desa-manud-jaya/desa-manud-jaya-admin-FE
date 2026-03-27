@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { PartnerAccountStatus, UserRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { useAppSelector } from "@/store/hooks";
 import {
   LayoutDashboard,
   CheckCircle,
@@ -35,11 +35,12 @@ const adminMenu: MenuItem[] = [
   { name: "Pusat Persetujuan", href: "/pusat-persetujuan", icon: CheckCircle },
   { name: "Verifikasi Eco", href: "/verifikasi-eco", icon: Leaf },
   { name: "Kelola Mitra", href: "/kelola-mitra", icon: Users },
-  { name: "Kelola Paket", href: "/kelola-paket", icon: Package },
+  // { name: "Kelola Paket", href: "/kelola-paket", icon: Package },
 ];
 
 const partnerDraftTopMenu: MenuItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Kelola Paket", href: "/kelola-paket", icon: Package },
 ];
 
 const partnerDraftBottomMenu: MenuItem[] = [
@@ -98,26 +99,33 @@ const commonBottomMenu: MenuItem[] = [
 ];
 
 interface SidebarProps {
-  role?: UserRole;
-  accountStatus?: PartnerAccountStatus;
   onLogoutClick?: () => void;
 }
 
-export function Sidebar({
-  role = "admin",
-  accountStatus,
-  onLogoutClick,
-}: SidebarProps) {
+export function Sidebar({ onLogoutClick }: SidebarProps) {
   const pathname = usePathname();
   const [underDevelopmentOpen, setUnderDevelopmentOpen] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState("");
 
-  const isPartner = role === "partner";
-  const isActivatedPartner = isPartner && accountStatus === "Activated";
+  const { hydrated, loginUser, vendorData } = useAppSelector(
+    (state) => state.auth
+  );
 
-  const activeClass = isPartner
-    ? "bg-blue-500 text-white"
-    : "bg-emerald-500 text-white";
+  const currentRole = loginUser?.role ?? null;
+  const rawStatus =
+    vendorData?.status ?? vendorData?.vendorProfile?.approvalStatus ?? "";
+
+  const isAdmin = currentRole === "ADMIN";
+  const isVendor = currentRole === "VENDOR";
+  const isActivatedPartner =
+    isVendor &&
+    (rawStatus === "APPROVED" ||
+      rawStatus === "ACTIVE" ||
+      rawStatus === "ACTIVATED");
+
+  const activeClass = isAdmin
+    ? "bg-emerald-500 text-white"
+    : "bg-blue-500 text-white";
 
   const inactiveClass =
     "text-muted-foreground hover:bg-muted hover:text-foreground";
@@ -135,11 +143,12 @@ export function Sidebar({
       return (
         <button
           key={item.name}
+          type="button"
           onClick={onLogoutClick}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
             fullWidth && "w-full",
-            inactiveClass,
+            inactiveClass
           )}
         >
           <Icon className="h-5 w-5" />
@@ -157,7 +166,7 @@ export function Sidebar({
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
             fullWidth && "w-full",
-            inactiveClass,
+            inactiveClass
           )}
         >
           <Icon className="h-5 w-5" />
@@ -172,7 +181,7 @@ export function Sidebar({
         href={item.href}
         className={cn(
           "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-          isActive ? activeClass : inactiveClass,
+          isActive ? activeClass : inactiveClass
         )}
       >
         <Icon className="h-5 w-5" />
@@ -181,7 +190,17 @@ export function Sidebar({
     );
   };
 
-  if (role === "admin") {
+  if (!hydrated) {
+    return (
+      <aside className="fixed left-0 top-0 z-40 flex h-screen w-[200px] flex-col border-r border-border bg-background">
+        <div className="flex h-16 items-center px-6">
+          <span className="text-xl font-bold text-foreground">Portal</span>
+        </div>
+      </aside>
+    );
+  }
+
+  if (isAdmin) {
     return (
       <>
         <aside className="fixed left-0 top-0 z-40 flex h-screen w-[200px] flex-col border-r border-border bg-background">

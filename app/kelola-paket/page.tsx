@@ -1,17 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { CheckCircle2, Lock } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { PartnerTourPackageManager } from "@/components/partner/partner-tour-package-manager";
 import { TableFilter } from "@/components/dashboard/table-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  getAuthSessionFromBrowser,
-  type AuthSession,
-} from "@/lib/auth";
+import { useAppSelector } from "@/store/hooks";
 import {
   Table,
   TableBody,
@@ -54,7 +50,9 @@ const adminPackages = [
 function AdminPackageManagePage() {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">Daftar Paket Wisata</h1>
+      <h1 className="text-2xl font-bold text-foreground">
+        Daftar Paket Wisata
+      </h1>
 
       <TableFilter
         businessTypeOptions={[
@@ -91,7 +89,9 @@ function AdminPackageManagePage() {
                 <TableCell>{pkg.price}</TableCell>
                 <TableCell>
                   <Badge
-                    variant={pkg.status === "active" ? "default" : "destructive"}
+                    variant={
+                      pkg.status === "active" ? "default" : "destructive"
+                    }
                     className={
                       pkg.status === "active"
                         ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
@@ -119,17 +119,77 @@ function AdminPackageManagePage() {
   );
 }
 
+function VendorPackageLockedState({ isPending }: { isPending: boolean }) {
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-foreground">My Tour Package</h1>
+
+      <div className="rounded-2xl border border-border bg-background p-8 shadow-sm">
+        <div className="flex items-start gap-4">
+          <div
+            className={`rounded-full p-3 ${
+              isPending ? "bg-emerald-100" : "bg-yellow-100"
+            }`}
+          >
+            {isPending ? (
+              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            ) : (
+              <Lock className="h-6 w-6 text-yellow-600" />
+            )}
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">
+              {isPending
+                ? "Documents Submitted Successfully"
+                : "Fitur upload paket masih terkunci"}
+            </h2>
+
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              {isPending
+                ? "We will review your documents before you can manage and upload tour packages."
+                : "Sebelum dapat mengupload konten destinasi atau paket wisata, Anda harus melengkapi Business Profile dan Document Verification terlebih dahulu."}
+            </p>
+
+            {isPending ? (
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href="/profil-bisnis"
+                  className="rounded-lg bg-blue-500 px-5 py-3 font-medium text-white transition hover:bg-blue-600"
+                >
+                  Cek Kembali Business Profile Anda
+                </Link>
+              </div>
+            ):(
+               <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href="/profil-bisnis"
+                  className="rounded-lg bg-blue-500 px-5 py-3 font-medium text-white transition hover:bg-blue-600"
+                >
+                  Lengkapi Business Profile
+                </Link>
+
+                <Link
+                  href="/verifikasi-dokumen"
+                  className="rounded-lg border border-border px-5 py-3 font-medium text-foreground transition hover:bg-muted"
+                >
+                  Upload Dokumen
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PackageManagePage() {
-  const [currentUser, setCurrentUser] = useState<AuthSession | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const { hydrated, loginUser, vendorData } = useAppSelector(
+    (state) => state.auth,
+  );
 
-  useEffect(() => {
-    const session = getAuthSessionFromBrowser();
-    setCurrentUser(session);
-    setIsReady(true);
-  }, []);
-
-  if (!isReady) {
+  if (!hydrated) {
     return (
       <DashboardLayout>
         <div className="min-h-[300px]" />
@@ -137,7 +197,9 @@ export default function PackageManagePage() {
     );
   }
 
-  if (currentUser?.role === "admin") {
+  const isAdmin = loginUser?.role === "ADMIN";
+
+  if (isAdmin) {
     return (
       <DashboardLayout>
         <AdminPackageManagePage />
@@ -145,48 +207,25 @@ export default function PackageManagePage() {
     );
   }
 
-  const isActivated = currentUser?.accountStatus === "Activated";
+  const rawStatus =
+    vendorData?.status ?? vendorData?.vendorProfile?.approvalStatus ?? "";
+
+  const isPending = rawStatus === "PENDING";
+  const isActivated =
+    rawStatus === "APPROVED" ||
+    rawStatus === "ACTIVE" ||
+    rawStatus === "ACTIVATED";
+
+  console.log("PACKAGE MANAGE loginUser:", loginUser);
+  console.log("PACKAGE MANAGE vendorData:", vendorData);
+  console.log("PACKAGE MANAGE rawStatus:", rawStatus);
+  console.log("PACKAGE MANAGE isPending:", isPending);
+  console.log("PACKAGE MANAGE isActivated:", isActivated);
 
   if (!isActivated) {
     return (
       <DashboardLayout>
-        <div className="space-y-6">
-          <h1 className="text-2xl font-bold text-foreground">My Tour Package</h1>
-
-          <div className="rounded-2xl border border-border bg-background p-8 shadow-sm">
-            <div className="flex items-start gap-4">
-              <div className="rounded-full bg-yellow-100 p-3">
-                <Lock className="h-6 w-6 text-yellow-600" />
-              </div>
-
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">
-                  Fitur upload paket masih terkunci
-                </h2>
-                <p className="mt-2 max-w-2xl text-muted-foreground">
-                  Sebelum dapat mengupload konten destinasi atau paket wisata, Anda harus
-                  melengkapi Business Profile dan Document Verification terlebih dahulu.
-                </p>
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href="/profil-bisnis"
-                    className="rounded-lg bg-blue-500 px-5 py-3 font-medium text-white transition hover:bg-blue-600"
-                  >
-                    Lengkapi Business Profile
-                  </Link>
-
-                  <Link
-                    href="/verifikasi-dokumen"
-                    className="rounded-lg border border-border px-5 py-3 font-medium text-foreground transition hover:bg-muted"
-                  >
-                    Upload Dokumen
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <VendorPackageLockedState isPending={isPending} />
       </DashboardLayout>
     );
   }

@@ -7,11 +7,13 @@ import {
   PARTNER_BUSINESS_TYPE_OPTIONS,
   type PartnerBusinessProfile,
 } from "@/lib/partner-mock";
-import { useAppSelector } from "@/store/hooks";
 import {
   mapBusinessTypeToApi,
   updateVendorProfile,
 } from "@/lib/services/auth-service";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { refreshVendorProfile } from "@/store/slices/auth-slice";
+import { useRouter } from "next/navigation";
 
 type BusinessProfileForm = Omit<PartnerBusinessProfile, "statusAccount"> & {
   statusAccount: string;
@@ -70,6 +72,9 @@ export default function BusinessProfilePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { token, vendorData, hydrated } = useAppSelector((state) => state.auth);
+
+  const dispatch = useAppDispatch();
+const router = useRouter();
 
   useEffect(() => {
     console.log("BUSINESS PROFILE - REDUX vendorData:", vendorData);
@@ -168,61 +173,71 @@ export default function BusinessProfilePage() {
   };
 
   const handleSave = async () => {
-    const nextErrors = validate();
+  const nextErrors = validate();
 
-    if (Object.keys(nextErrors).length > 0) {
-      console.log("BUSINESS PROFILE VALIDATION ERRORS:", nextErrors);
-      setErrors(nextErrors);
-      return;
-    }
+  if (Object.keys(nextErrors).length > 0) {
+    console.log("BUSINESS PROFILE VALIDATION ERRORS:", nextErrors);
+    setErrors(nextErrors);
+    return;
+  }
 
-    if (!token) {
-      console.log("UPDATE VENDOR PROFILE FAILED: token tidak ditemukan");
-      alert("Token login tidak ditemukan. Silakan login ulang.");
-      return;
-    }
+  if (!token) {
+    console.log("UPDATE VENDOR PROFILE FAILED: token tidak ditemukan");
+    alert("Token login tidak ditemukan. Silakan login ulang.");
+    return;
+  }
 
-    const payload = {
-      namaUsaha: form.businessName.trim(),
-      namaOwner: form.ownerName.trim(),
-      bankAccountName: form.bankAccountName.trim(),
-      bankAccountNumber: form.bankAccountNumber.trim(),
-      jenisUsaha: mapBusinessTypeToApi(form.businessType),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      address: form.businessAddress.trim(),
-      nik: form.nik.trim(),
-      nib: form.nib.trim(),
-      sku: form.sku.trim(),
-      siup: form.siup.trim(),
-    };
-
-    console.log("BUSINESS PROFILE FORM VALUES:", form);
-    console.log("BUSINESS PROFILE UPDATE PAYLOAD:", payload);
-    console.log("BUSINESS PROFILE TOKEN:", token);
-
-    try {
-      setSaving(true);
-
-      const result = await updateVendorProfile(token, payload);
-
-      console.log("UPDATE VENDOR PROFILE SUCCESS:", result);
-
-      setForm((prev) => ({
-        ...prev,
-        statusAccount: "Pending Approval",
-      }));
-
-      setErrors({});
-      setIsEditing(false);
-      alert("Business profile berhasil diupdate.");
-    } catch (error) {
-      console.error("UPDATE VENDOR PROFILE ERROR:", error);
-      alert(error instanceof Error ? error.message : "Gagal update profile");
-    } finally {
-      setSaving(false);
-    }
+  const payload = {
+    namaUsaha: form.businessName.trim(),
+    namaOwner: form.ownerName.trim(),
+    bankAccountName: form.bankAccountName.trim(),
+    bankAccountNumber: form.bankAccountNumber.trim(),
+    jenisUsaha: mapBusinessTypeToApi(form.businessType),
+    email: form.email.trim(),
+    phone: form.phone.trim(),
+    address: form.businessAddress.trim(),
+    nik: form.nik.trim(),
+    nib: form.nib.trim(),
+    sku: form.sku.trim(),
+    siup: form.siup.trim(),
   };
+
+  console.log("BUSINESS PROFILE FORM VALUES:", form);
+  console.log("BUSINESS PROFILE UPDATE PAYLOAD:", payload);
+  console.log("BUSINESS PROFILE TOKEN:", token);
+
+  try {
+    setSaving(true);
+
+    const result = await updateVendorProfile(token, payload);
+
+    console.log("UPDATE VENDOR PROFILE SUCCESS:", result);
+
+    const refreshResult = await dispatch(refreshVendorProfile());
+
+    console.log("REFRESH VENDOR PROFILE RESULT ACTION:", refreshResult);
+
+    if (refreshVendorProfile.rejected.match(refreshResult)) {
+      alert(
+        typeof refreshResult.payload === "string"
+          ? refreshResult.payload
+          : "Profile berhasil disimpan, tapi gagal refresh data vendor"
+      );
+      return;
+    }
+
+    setErrors({});
+    setIsEditing(false);
+
+    router.replace("/dashboard");
+    router.refresh();
+  } catch (error) {
+    console.error("UPDATE VENDOR PROFILE ERROR:", error);
+    alert(error instanceof Error ? error.message : "Gagal update profile");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const renderError = (field: keyof BusinessProfileForm) =>
     errors[field] ? (

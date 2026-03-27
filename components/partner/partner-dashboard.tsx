@@ -17,6 +17,7 @@ import {
   partnerDocumentsMock,
   getPartnerActivationProgress,
 } from "@/lib/partner-mock";
+import { useAppSelector } from "@/store/hooks";
 
 const stats = [
   {
@@ -50,10 +51,25 @@ const stats = [
 ];
 
 export function PartnerDashboard() {
-  const progress = getPartnerActivationProgress(
+  const { vendorData } = useAppSelector((state) => state.auth);
+
+  const rawStatus =
+    vendorData?.status ?? vendorData?.vendorProfile?.approvalStatus ?? "";
+
+  const isPending = rawStatus === "PENDING";
+  const isPleaseFillProfile = rawStatus === "PLEASE_FILL_PROFILE";
+
+  const defaultProgress = getPartnerActivationProgress(
     partnerBusinessProfileMock,
     partnerDocumentsMock
   );
+
+  const progress = isPending ? 100 : defaultProgress;
+
+  console.log("PARTNER DASHBOARD vendorData:", vendorData);
+  console.log("PARTNER DASHBOARD rawStatus:", rawStatus);
+  console.log("PARTNER DASHBOARD isPending:", isPending);
+  console.log("PARTNER DASHBOARD isPleaseFillProfile:", isPleaseFillProfile);
 
   return (
     <div className="space-y-6">
@@ -87,88 +103,117 @@ export function PartnerDashboard() {
         ))}
       </div>
 
-      <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-5">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-8 w-8 text-orange-600" />
-          <div className="flex-1">
-            <h2 className="text-2xl font-semibold text-foreground">
-              Account Activation Required
-            </h2>
-            <p className="mt-1 text-xl italic text-foreground/80">
-              Please complete your business profile and upload required documents.
-            </p>
+      {isPending ? (
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-8 w-8 text-emerald-600" />
+            <div className="flex-1">
+              <h2 className="text-2xl font-semibold text-foreground">
+                Documents Submitted Successfully
+              </h2>
+              <p className="mt-1 text-xl italic text-foreground/80">
+                We will review your documents.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-5">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-8 w-8 text-orange-600" />
+            <div className="flex-1">
+              <h2 className="text-2xl font-semibold text-foreground">
+                Account Activation Required
+              </h2>
+              <p className="mt-1 text-xl italic text-foreground/80">
+                Please complete your business profile and upload required documents.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-border bg-background p-6">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-yellow-400 text-black">
-            !
+          <div
+            className={`flex h-12 w-12 items-center justify-center rounded-full ${
+              isPending ? "bg-emerald-500 text-white" : "bg-yellow-400 text-black"
+            }`}
+          >
+            {isPending ? <CheckCircle2 className="h-6 w-6" /> : "!"}
           </div>
+
           <div className="flex items-center gap-3">
             <p className="text-3xl font-bold text-foreground">{progress}%</p>
             <p className="text-sm text-muted-foreground">
-              Account Verification Progress
+              {isPending
+                ? "We will review your documents"
+                : "Account Verification Progress"}
             </p>
           </div>
         </div>
 
         <div className="mt-5 h-3 overflow-hidden rounded-full bg-muted">
           <div
-            className="h-full rounded-full bg-yellow-400 transition-all"
+            className={`h-full rounded-full transition-all ${
+              isPending ? "bg-emerald-500" : "bg-yellow-400"
+            }`}
             style={{ width: `${progress}%` }}
           />
         </div>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-6">
-        <Link
-          href="/profil-bisnis"
-          className="rounded-full bg-emerald-600 px-8 py-4 text-xl font-semibold text-white shadow-md transition hover:bg-emerald-700"
-        >
-          Complete Activation
-        </Link>
+      {!isPending && (
+        <div className="flex flex-wrap justify-center gap-6">
+          <Link
+            href="/profil-bisnis"
+            className="rounded-full bg-emerald-600 px-8 py-4 text-xl font-semibold text-white shadow-md transition hover:bg-emerald-700"
+          >
+            Complete Activation
+          </Link>
 
-        <Link
-          href="/verifikasi-dokumen"
-          className="rounded-full bg-amber-600 px-8 py-4 text-xl font-semibold text-white shadow-md transition hover:bg-amber-700"
-        >
-          View Requirements
-        </Link>
-      </div>
-
-      <div
-        id="requirements"
-        className="mx-auto max-w-3xl rounded-2xl border border-border bg-background p-4"
-      >
-        <h3 className="mb-4 text-xl font-semibold text-foreground">
-          Document Requirements
-        </h3>
-
-        <div className="overflow-hidden rounded-xl border border-border">
-          {partnerDocumentsMock.map((doc) => (
-            <div
-              key={doc.key}
-              className="flex items-center justify-between border-b border-border px-4 py-3 last:border-b-0"
-            >
-              <div className="flex items-center gap-3">
-                <Paperclip className="h-5 w-5 text-muted-foreground" />
-                <span className="text-lg text-foreground">
-                  {doc.label}
-                  {doc.required ? "*" : " (Optional)"}
-                </span>
-              </div>
-
-              {doc.uploaded ? (
-                <CheckCircle2 className="h-5 w-5 text-blue-500" />
-              ) : (
-                <XCircle className="h-5 w-5 text-red-500" />
-              )}
-            </div>
-          ))}
+          <Link
+            href="/verifikasi-dokumen"
+            className="rounded-full bg-amber-600 px-8 py-4 text-xl font-semibold text-white shadow-md transition hover:bg-amber-700"
+          >
+            View Requirements
+          </Link>
         </div>
-      </div>
+      )}
+
+      {!isPending && (
+        <div
+          id="requirements"
+          className="mx-auto max-w-3xl rounded-2xl border border-border bg-background p-4"
+        >
+          <h3 className="mb-4 text-xl font-semibold text-foreground">
+            Document Requirements
+          </h3>
+
+          <div className="overflow-hidden rounded-xl border border-border">
+            {partnerDocumentsMock.map((doc) => (
+              <div
+                key={doc.key}
+                className="flex items-center justify-between border-b border-border px-4 py-3 last:border-b-0"
+              >
+                <div className="flex items-center gap-3">
+                  <Paperclip className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-lg text-foreground">
+                    {doc.label}
+                    {doc.required ? "*" : " (Optional)"}
+                  </span>
+                </div>
+
+                {doc.uploaded ? (
+                  <CheckCircle2 className="h-5 w-5 text-blue-500" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

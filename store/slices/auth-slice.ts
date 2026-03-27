@@ -1,6 +1,11 @@
 import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { clearAuthStorage, saveAuthToStorage } from "../utils/auth-storage";
-import type { AuthState, LoginResponse, VendorProfileData } from "../types/auth";
+import type {
+  AuthState,
+  LoginResponse,
+  VendorProfileData,
+} from "../types/auth";
+import type { RootState } from "../index";
 
 type LoginPayload = {
   username: string;
@@ -34,7 +39,7 @@ async function fetchLogin(payload: LoginPayload): Promise<LoginResponse> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
-    }
+    },
   );
 
   const rawText = await response.text();
@@ -68,7 +73,7 @@ async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-    }
+    },
   );
 
   const rawText = await response.text();
@@ -86,7 +91,7 @@ async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
       typeof data === "object" && data !== null && "message" in data
         ? String(
             (data as { message?: string }).message ||
-              "Gagal mengambil data vendor"
+              "Gagal mengambil data vendor",
           )
         : "Gagal mengambil data vendor";
 
@@ -95,6 +100,46 @@ async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
 
   return data as VendorProfileData;
 }
+
+export const refreshVendorProfile = createAsyncThunk<
+  VendorProfileData,
+  void,
+  { state: RootState; rejectValue: string }
+>("auth/refreshVendorProfile", async (_, thunkAPI) => {
+  try {
+    const state = thunkAPI.getState();
+    const token = state.auth.token;
+    const loginUser = state.auth.loginUser;
+    const sessionPassword = state.auth.sessionPassword;
+
+    if (!token) {
+      return thunkAPI.rejectWithValue("Token tidak ditemukan");
+    }
+
+    if (loginUser?.role !== "VENDOR") {
+      return thunkAPI.rejectWithValue("Refresh profile hanya untuk vendor");
+    }
+
+    const vendorData = await fetchVendorProfile(token);
+
+    saveAuthToStorage({
+      token,
+      loginUser,
+      vendorData,
+      sessionPassword,
+    });
+
+    console.log("REFRESH VENDOR PROFILE SUCCESS:", vendorData);
+
+    return vendorData;
+  } catch (error) {
+    console.error("REFRESH VENDOR PROFILE ERROR:", error);
+
+    return thunkAPI.rejectWithValue(
+      error instanceof Error ? error.message : "Gagal refresh vendor profile",
+    );
+  }
+});
 
 export const loginAndFetchUser = createAsyncThunk<
   LoginThunkResult,
@@ -131,7 +176,7 @@ export const loginAndFetchUser = createAsyncThunk<
     };
   } catch (error) {
     return thunkAPI.rejectWithValue(
-      error instanceof Error ? error.message : "Login gagal"
+      error instanceof Error ? error.message : "Login gagal",
     );
   }
 });
@@ -147,7 +192,7 @@ const authSlice = createSlice({
         loginUser: LoginResponse | null;
         vendorData: VendorProfileData | null;
         sessionPassword: string | null;
-      }>
+      }>,
     ) => {
       state.token = action.payload.token;
       state.loginUser = action.payload.loginUser;
@@ -190,6 +235,19 @@ const authSlice = createSlice({
         state.error = action.payload || "Login gagal";
         state.isAuthenticated = false;
         state.hydrated = true;
+      })
+      .addCase(refreshVendorProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(refreshVendorProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+        state.vendorData = action.payload;
+      })
+      .addCase(refreshVendorProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || "Gagal refresh vendor profile";
       });
   },
 });
