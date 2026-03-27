@@ -57,7 +57,7 @@ type DeletionRequestItem = {
   status: ApprovalStatus;
 };
 
-type PendingTourPackageApiItem = {
+type DeletionRequestApiItem = {
   id: string;
   name: string;
   category: string;
@@ -86,17 +86,41 @@ type PendingTourPackageApiItem = {
   updatedAt: string;
 };
 
-const initialDeletionRequests: DeletionRequestItem[] = [
-  {
-    id: "DEL2026-004",
-    packageName: "Cool Rafting",
-    businessName: "Go Rafting",
-    requestor: "Cahyo",
-    submissionDate: "09/02/2026",
-    changeType: "HAPUS",
-    status: "pending",
-  },
-];
+type DeletionRequestsApiResponse = {
+  items: DeletionRequestApiItem[];
+  page: number;
+  size: number;
+  total: number;
+};
+
+type PendingTourPackageApiItem = {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  duration: number;
+  availability: number;
+  itinerary: string[];
+  included: string[];
+  termsAndConditions: string;
+  pricingPolicy: string;
+  cancellationPolicy: string;
+  requirementDocumentUrl: string | null;
+  photoUrl: string | null;
+  approvalStatus: string;
+  vendorId: string;
+  businessId: string;
+  rejectionReason: string | null;
+  moderationNote: string | null;
+  deletionRequestStatus: string;
+  deletionRequestReason: string | null;
+  deletionReviewNote: string | null;
+  deletionReviewerId: string | null;
+  deletionRequestedAt: string | null;
+  deletionReviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 function formatCurrency(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
@@ -229,6 +253,22 @@ function StatusBadge({ status }: { status: ApprovalStatus }) {
   );
 }
 
+function formatDeletionDate(value: string | null) {
+  if (!value) return "-";
+
+  return new Date(value).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function mapDeletionStatus(value: string): ApprovalStatus {
+  if (value === "APPROVED") return "approved";
+  if (value === "REJECTED") return "rejected";
+  return "pending";
+}
+
 async function parseApiResponse(response: Response) {
   const rawText = await response.text();
 
@@ -319,6 +359,117 @@ async function rejectPendingTourPackage(
   return data;
 }
 
+async function fetchDeletionRequests(
+  token: string,
+  page = 0,
+  size = 10,
+): Promise<DeletionRequestsApiResponse> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/packages/deletion-requests?page=${page}&size=${size}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  const rawText = await response.text();
+
+  let data: unknown = null;
+
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+      console.log("GET /admin/packages/deletion-requests RESPONSE:", data);
+    } catch {
+      throw new Error("Response /admin/packages/deletion-requests tidak valid");
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengambil deletion requests",
+          )
+        : "Gagal mengambil deletion requests";
+
+    throw new Error(message);
+  }
+
+  return data as DeletionRequestsApiResponse;
+}
+async function approveDeletionRequest(
+  token: string,
+  id: string,
+  note?: string,
+) {
+  const query = note?.trim() ? `?note=${encodeURIComponent(note.trim())}` : "";
+
+  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/packages/${id}/deletion-approve${query}`;
+
+  console.log("APPROVE DELETION REQUEST:", {
+    url,
+    id,
+    note: note?.trim() ?? "",
+  });
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  const data = await parseApiResponse(response);
+
+  console.log("APPROVE DELETION RESPONSE:", data);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(data, "Gagal approve deletion request"));
+  }
+
+  return data;
+}
+
+async function rejectDeletionRequest(
+  token: string,
+  id: string,
+  reason: string,
+) {
+  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/packages/${id}/deletion-reject?reason=${encodeURIComponent(
+    reason.trim(),
+  )}`;
+
+  console.log("REJECT DELETION REQUEST:", {
+    url,
+    id,
+    reason: reason.trim(),
+  });
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  const data = await parseApiResponse(response);
+
+  console.log("REJECT DELETION RESPONSE:", data);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(data, "Gagal reject deletion request"));
+  }
+
+  return data;
+}
+
 export default function ApprovalCenterPage() {
   const dispatch = useAppDispatch();
 
@@ -341,11 +492,20 @@ export default function ApprovalCenterPage() {
   const [errorPendingTourPackages, setErrorPendingTourPackages] = useState<
     string | null
   >(null);
-  const [deletionRequests, setDeletionRequests] = useState(
-    initialDeletionRequests,
-  );
+  const [deletionRequests, setDeletionRequests] = useState<
+    DeletionRequestItem[]
+  >([]);
+  const [loadingDeletionRequests, setLoadingDeletionRequests] = useState(false);
+  const [errorDeletionRequests, setErrorDeletionRequests] = useState<
+    string | null
+  >(null);
   const [approvingTourPackage, setApprovingTourPackage] = useState(false);
   const [rejectingTourPackage, setRejectingTourPackage] = useState(false);
+
+  const [approvingDeletionRequest, setApprovingDeletionRequest] =
+    useState(false);
+  const [rejectingDeletionRequest, setRejectingDeletionRequest] =
+    useState(false);
 
   const [partnerSearch, setPartnerSearch] = useState("");
   const [partnerStatusMap, setPartnerStatusMap] = useState<
@@ -376,7 +536,6 @@ export default function ApprovalCenterPage() {
       setErrorPendingTourPackages(null);
       return;
     }
-
     let isMounted = true;
 
     const loadPendingTourPackages = async () => {
@@ -419,6 +578,60 @@ export default function ApprovalCenterPage() {
     };
 
     loadPendingTourPackages();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loginUser, token]);
+
+  useEffect(() => {
+    if (loginUser?.role !== "ADMIN" || !token) {
+      setDeletionRequests([]);
+      setErrorDeletionRequests(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadDeletionRequests = async () => {
+      try {
+        setLoadingDeletionRequests(true);
+        setErrorDeletionRequests(null);
+
+        const response = await fetchDeletionRequests(token, 0, 10);
+
+        const mappedItems: DeletionRequestItem[] = response.items.map(
+          (item) => ({
+            id: item.id,
+            packageName: item.name || "-",
+            businessName: "-",
+            requestor: "-",
+            submissionDate: formatDeletionDate(item.deletionRequestedAt),
+            changeType: "HAPUS",
+            status: mapDeletionStatus(item.deletionRequestStatus),
+          }),
+        );
+
+        console.log("MAPPED DELETION REQUESTS:", mappedItems);
+
+        if (!isMounted) return;
+        setDeletionRequests(mappedItems);
+      } catch (error) {
+        if (!isMounted) return;
+
+        setDeletionRequests([]);
+        setErrorDeletionRequests(
+          error instanceof Error
+            ? error.message
+            : "Gagal mengambil deletion requests",
+        );
+      } finally {
+        if (!isMounted) return;
+        setLoadingDeletionRequests(false);
+      }
+    };
+
+    loadDeletionRequests();
 
     return () => {
       isMounted = false;
@@ -597,12 +810,64 @@ export default function ApprovalCenterPage() {
     const nextStatus: ApprovalStatus =
       modalType === "approve" ? "approved" : "rejected";
 
-    if (selectedItem.section === "deletion") {
-      setDeletionRequests((prev) =>
-        prev.map((item) =>
-          item.id === selectedItem.id ? { ...item, status: nextStatus } : item,
-        ),
-      );
+    if (selectedItem.section === "deletion" && modalType === "approve") {
+      if (!token) {
+        alert("Token admin tidak ditemukan. Silakan login ulang.");
+        return;
+      }
+
+      try {
+        setApprovingDeletionRequest(true);
+
+        await approveDeletionRequest(token, selectedItem.id, trimmedReason);
+
+        setDeletionRequests((prev) =>
+          prev.filter((item) => item.id !== selectedItem.id),
+        );
+
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      } catch (error) {
+        alert(
+          error instanceof Error
+            ? error.message
+            : "Gagal approve deletion request",
+        );
+        return;
+      } finally {
+        setApprovingDeletionRequest(false);
+      }
+    }
+
+    if (selectedItem.section === "deletion" && modalType === "reject") {
+      if (!token) {
+        alert("Token admin tidak ditemukan. Silakan login ulang.");
+        return;
+      }
+
+      try {
+        setRejectingDeletionRequest(true);
+
+        await rejectDeletionRequest(token, selectedItem.id, trimmedReason);
+
+        setDeletionRequests((prev) =>
+          prev.filter((item) => item.id !== selectedItem.id),
+        );
+
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      } catch (error) {
+        alert(
+          error instanceof Error
+            ? error.message
+            : "Gagal reject deletion request",
+        );
+        return;
+      } finally {
+        setRejectingDeletionRequest(false);
+      }
     }
 
     setConfirmOpen(false);
@@ -860,7 +1125,22 @@ export default function ApprovalCenterPage() {
               </TableHeader>
 
               <TableBody>
-                {deletionRequests.length > 0 ? (
+                {loadingDeletionRequests ? (
+                  <TableRow>
+                    <TableCell
+                      className="text-center text-muted-foreground"
+                      colSpan={8}
+                    >
+                      Memuat data deletion request...
+                    </TableCell>
+                  </TableRow>
+                ) : errorDeletionRequests ? (
+                  <TableRow>
+                    <TableCell className="text-center text-red-500" colSpan={8}>
+                      {errorDeletionRequests}
+                    </TableCell>
+                  </TableRow>
+                ) : deletionRequests.length > 0 ? (
                   deletionRequests.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.id}</TableCell>
@@ -892,9 +1172,14 @@ export default function ApprovalCenterPage() {
                             onClick={() =>
                               openActionModal("deletion", item.id, "approve")
                             }
-                            disabled={item.status !== "pending"}
+                            disabled={
+                              item.status !== "pending" ||
+                              approvingDeletionRequest
+                            }
                           >
-                            Setujui
+                            {approvingDeletionRequest
+                              ? "Memproses..."
+                              : "Setujui"}
                           </Button>
 
                           <Button
@@ -904,9 +1189,14 @@ export default function ApprovalCenterPage() {
                             onClick={() =>
                               openActionModal("deletion", item.id, "reject")
                             }
-                            disabled={item.status !== "pending"}
+                            disabled={
+                              item.status !== "pending" ||
+                              rejectingDeletionRequest
+                            }
                           >
-                            Tolak
+                            {rejectingDeletionRequest
+                              ? "Memproses..."
+                              : "Tolak"}
                           </Button>
                         </div>
                       </TableCell>

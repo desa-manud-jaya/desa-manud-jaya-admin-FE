@@ -40,6 +40,7 @@ export type TourPackageFormValue = {
   deletionReviewedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  deletionReason?: string;
 };
 
 export type TourPackageCompletePayload = {
@@ -66,7 +67,8 @@ type TourPackageErrors = Partial<
     | "includedItems"
     | "requiredDocumentLabel"
     | "requiredDocumentFile"
-    | "coverImageFile",
+    | "coverImageFile"
+    | "deletionReason",
     string
   >
 >;
@@ -122,6 +124,7 @@ const emptyForm: TourPackageFormValue = {
   deletionReviewedAt: null,
   createdAt: "",
   updatedAt: "",
+  deletionReason: "",
 };
 
 const baseInputClassName =
@@ -285,6 +288,9 @@ export function TourPackageFormModal({
         nextErrors.duration = "Please enter your package duration.";
       if (!form.availability.trim())
         nextErrors.availability = "Please enter your package availability.";
+      if (isDeleteMode && !form.deletionReason?.trim()) {
+        nextErrors.deletionReason = "Please enter deletion reason.";
+      }
 
       if (
         form.itineraryItems.filter((item) => item.trim() !== "").length === 0
@@ -742,6 +748,27 @@ export function TourPackageFormModal({
                 "Included*",
                 "includedItems",
                 errors.includedItems,
+              )}
+
+              {isDeleteMode && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Deletion Reason*
+                  </label>
+                  <textarea
+                    value={form.deletionReason ?? ""}
+                    onChange={(e) =>
+                      handleChange("deletionReason", e.target.value)
+                    }
+                    placeholder="Enter reason for deletion request"
+                    className="min-h-[120px] w-full rounded-xl border border-blue-300 bg-background px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                  {errors.deletionReason && (
+                    <p className="mt-2 text-sm text-red-500">
+                      {errors.deletionReason}
+                    </p>
+                  )}
+                </div>
               )}
 
               <div>

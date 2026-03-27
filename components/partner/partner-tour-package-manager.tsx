@@ -67,6 +67,23 @@ function formatRequestDate() {
   return `${day} ${month} ${year}`;
 }
 
+function formatShortId(value: string) {
+  if (!value) return "-";
+  if (value.length <= 6) return value;
+  return `${value.slice(0, 6)}..`;
+}
+
+function formatTrackingDate(value?: string | null) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = date.toLocaleString("en-GB", { month: "short" });
+  const year = date.getFullYear();
+
+  return `${day} ${month} ${year}`;
+}
+
 function normalizeNumberString(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "";
   return String(value).replace(/[^\d]/g, "");
@@ -130,6 +147,7 @@ function mapApiPackageToFormValue(
     deletionReviewedAt: item.deletionReviewedAt,
     createdAt: item.createdAt ?? "",
     updatedAt: item.updatedAt ?? "",
+    deletionReason: item.deletionRequestReason ?? "",
   };
 }
 
@@ -248,7 +266,7 @@ async function createVendorPackage(
     },
   );
 
-   const rawText = await response.text();
+  const rawText = await response.text();
 
   console.log("POST PACKAGE RAW TEXT RESPONSE:", rawText);
 
@@ -265,96 +283,141 @@ async function createVendorPackage(
   if (!response.ok) {
     const message =
       typeof data === "object" && data !== null && "message" in data
-        ? String((data as { message?: string }).message || "Gagal submit package")
+        ? String(
+            (data as { message?: string }).message || "Gagal submit package",
+          )
         : typeof data === "string" && data.trim() !== ""
-        ? data
-        : "Gagal submit package";
+          ? data
+          : "Gagal submit package";
 
     throw new Error(message);
   }
 
   return data as VendorPackageApiItem;
 }
+async function updateVendorPackage(
+  token: string,
+  businessId: string,
+  packageId: string,
+  values: TourPackageFormValue,
+): Promise<void> {
+  const payload = {
+    name: values.title.trim(),
+    category: values.category,
+    price: Number(normalizeNumberString(values.price)),
+    duration: Number(normalizeNumberString(values.duration)),
+    availability: Number(normalizeNumberString(values.availability)),
+    itinerary: values.itineraryItems.filter((item) => item.trim() !== ""),
+    included: values.includedItems.filter((item) => item.trim() !== ""),
+    termsAndConditions: values.termsAndConditions?.trim() ?? "",
+    pricingPolicy: values.pricingPolicy?.trim() ?? "",
+    cancellationPolicy: values.cancellationPolicy?.trim() ?? "",
+    moderationNote: values.moderationNote?.trim() ?? "",
+  };
 
-// async function createVendorPackage(
-//   token: string,
-//   businessId: string,
-//   values: TourPackageFormValue,
-// ): Promise<VendorPackageApiItem> {
-//   if (!values.requiredDocumentFile) {
-//     throw new Error("Required document belum dipilih");
-//   }
+  console.log("UPDATE PACKAGE REQUEST:", {
+    businessId,
+    packageId,
+    payload,
+  });
 
-//   if (!values.coverImageFile) {
-//     throw new Error("Photo belum dipilih");
-//   }
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor/businesses/${businessId}/packages/${packageId}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
 
-//   const dataPayload = {
-//     termsAndConditions: values.termsAndConditions?.trim() ?? "",
-//     price: Number(normalizeNumberString(values.price)),
-//     itinerary: values.itineraryItems.filter((item) => item.trim() !== ""),
-//     name: values.title.trim(),
-//     duration: Number(normalizeNumberString(values.duration)),
-//     cancellationPolicy: values.cancellationPolicy?.trim() ?? "",
-//     pricingPolicy: values.pricingPolicy?.trim() ?? "",
-//     availability: Number(normalizeNumberString(values.availability)),
-//     included: values.includedItems.filter((item) => item.trim() !== ""),
-//     category: values.category,
-//   };
+  const rawText = await response.text();
+  console.log("UPDATE PACKAGE RAW RESPONSE:", rawText);
 
-//   const formData = new FormData();
-//   formData.append("data", JSON.stringify(dataPayload));
-//   formData.append("requirementDocument", values.requiredDocumentFile);
-//   formData.append("photo", values.coverImageFile);
+  let data: unknown = null;
 
-//   console.log("CREATE PACKAGE DATA PAYLOAD:", dataPayload);
-//   console.log(
-//     "CREATE PACKAGE REQUIREMENT DOCUMENT:",
-//     values.requiredDocumentFile,
-//   );
-//   console.log("CREATE PACKAGE PHOTO:", values.coverImageFile);
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+      console.log("UPDATE PACKAGE JSON RESPONSE:", data);
+    } catch {
+      data = rawText;
+    }
+  }
 
-//   const response = await fetch(
-//     `${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor/businesses/${businessId}/packages`,
-//     {
-//       method: "POST",
-//       headers: {
-//         Authorization: `Bearer ${token}`,
-//       },
-//       body: formData,
-//     },
-//   );
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal update tour package",
+          )
+        : typeof data === "string" && data.trim() !== ""
+          ? data
+          : "Gagal update tour package";
 
-//   const rawText = await response.text();
+    throw new Error(message);
+  }
+}
 
-//   let data: unknown = null;
+async function requestVendorPackageDeletion(
+  token: string,
+  businessId: string,
+  packageId: string,
+  reason: string,
+): Promise<void> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor/businesses/${businessId}/packages/${packageId}/deletion-request`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        reason: reason.trim(),
+      }),
+    },
+  );
 
-//   try {
-//     data = rawText ? JSON.parse(rawText) : null;
-//     console.log(
-//       "POST /vendor/businesses/{businessId}/packages RESPONSE:",
-//       data,
-//     );
-//   } catch {
-//     throw new Error(
-//       "Response POST /vendor/businesses/{businessId}/packages tidak valid",
-//     );
-//   }
+  const rawText = await response.text();
 
-//   if (!response.ok) {
-//     const message =
-//       typeof data === "object" && data !== null && "message" in data
-//         ? String(
-//             (data as { message?: string }).message ||
-//               "Gagal menambahkan tour package",
-//           )
-//         : "Gagal menambahkan tour package";
+  console.log("DELETE PACKAGE REQUEST:", {
+    businessId,
+    packageId,
+    reason,
+  });
+  console.log("DELETE PACKAGE RAW RESPONSE:", rawText);
 
-//     throw new Error(message);
-//   }
+  let data: unknown = null;
 
-//   return data as VendorPackageApiItem;
-// }
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+      console.log("DELETE PACKAGE JSON RESPONSE:", data);
+    } catch {
+      data = rawText;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengirim deletion request package",
+          )
+        : typeof data === "string" && data.trim() !== ""
+          ? data
+          : "Gagal mengirim deletion request package";
+
+    throw new Error(message);
+  }
+}
 
 export function PartnerTourPackageManager() {
   const token = useAppSelector((state) => state.auth.token);
@@ -383,7 +446,12 @@ export function PartnerTourPackageManager() {
       const apiPackages = await fetchVendorPackages(token, businessId);
       console.log("API PACKAGES:", apiPackages);
 
-      const mappedPackages = apiPackages.map(mapApiPackageToFormValue);
+      const filteredApiPackages = apiPackages.filter(
+        (item) => item.deletionRequestStatus !== "APPROVED",
+      );
+      console.log("FILTERED API PACKAGES:", filteredApiPackages);
+
+      const mappedPackages = filteredApiPackages.map(mapApiPackageToFormValue);
       console.log("MAPPED PACKAGES:", mappedPackages);
 
       setPackages(mappedPackages);
@@ -404,6 +472,34 @@ export function PartnerTourPackageManager() {
   }, [loadPackages]);
 
   const featuredPackage = useMemo(() => packages[0] ?? null, [packages]);
+
+  const trackingRequests = useMemo(() => {
+    return packages
+      .filter(
+        (pkg) =>
+          pkg.approvalStatus === "PENDING" ||
+          pkg.deletionRequestStatus === "PENDING",
+      )
+      .map((pkg) => {
+        const isDeletionPending = pkg.deletionRequestStatus === "PENDING";
+
+        return {
+          id: pkg.id,
+          packageName: pkg.title,
+          category: formatCategoryLabel(pkg.category),
+          date: formatTrackingDate(
+            isDeletionPending
+              ? (pkg.deletionRequestedAt ?? pkg.updatedAt ?? pkg.createdAt)
+              : (pkg.updatedAt ?? pkg.createdAt),
+          ),
+          type: isDeletionPending ? "DELETION" : "ADD NEW",
+          feedback: isDeletionPending
+            ? (pkg.deletionRequestReason ?? "-")
+            : "-",
+          status: "Processing" as PackageRequestStatus,
+        };
+      });
+  }, [packages]);
 
   const openCreateModal = () => {
     setActionMode("create");
@@ -466,13 +562,36 @@ export function PartnerTourPackageManager() {
     }
 
     if (action === "edit") {
-      setPackages((prev) =>
-        prev.map((item) => (item.id === values.id ? values : item)),
-      );
+      if (!token) {
+        throw new Error("Token tidak ditemukan");
+      }
+
+      if (!businessId) {
+        throw new Error("Business ID tidak ditemukan");
+      }
+
+      await updateVendorPackage(token, businessId, values.id, values);
+      await loadPackages();
       addRequestRecord(values, "UPDATE");
       return;
     }
 
+    if (!token) {
+      throw new Error("Token tidak ditemukan");
+    }
+
+    if (!businessId) {
+      throw new Error("Business ID tidak ditemukan");
+    }
+
+    await requestVendorPackageDeletion(
+      token,
+      businessId,
+      values.id,
+      values.deletionReason?.trim() ?? "",
+    );
+
+    await loadPackages();
     addRequestRecord(values, "DELETION");
   };
 
@@ -696,10 +815,10 @@ export function PartnerTourPackageManager() {
             </thead>
 
             <tbody>
-              {requests.length > 0 ? (
-                requests.map((item) => (
+              {trackingRequests.length > 0 ? (
+                trackingRequests.map((item) => (
                   <tr key={item.id} className="border-t border-border">
-                    <td className="px-6 py-5">{item.id}</td>
+                    <td className="px-6 py-5">{formatShortId(item.id)}</td>
                     <td className="px-6 py-5">{item.packageName}</td>
                     <td className="px-6 py-5">{item.category}</td>
                     <td className="px-6 py-5">{item.date}</td>
