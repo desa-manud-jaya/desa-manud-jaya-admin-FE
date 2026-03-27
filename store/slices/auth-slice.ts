@@ -19,6 +19,12 @@ type LoginThunkResult = {
   sessionPassword: string;
 };
 
+const getBusinessIdFromVendorData = (
+  vendorData: VendorProfileData | null
+): string | null => {
+  return vendorData?.vendorProfile?.businessId ?? null;
+};
+
 const initialState: AuthState = {
   token: null,
   isAuthenticated: false,
@@ -28,6 +34,7 @@ const initialState: AuthState = {
   loading: false,
   error: null,
   hydrated: false,
+  businessId: null,
 };
 
 async function fetchLogin(payload: LoginPayload): Promise<LoginResponse> {
@@ -39,7 +46,7 @@ async function fetchLogin(payload: LoginPayload): Promise<LoginResponse> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
-    },
+    }
   );
 
   const rawText = await response.text();
@@ -73,7 +80,7 @@ async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-    },
+    }
   );
 
   const rawText = await response.text();
@@ -91,7 +98,7 @@ async function fetchVendorProfile(token: string): Promise<VendorProfileData> {
       typeof data === "object" && data !== null && "message" in data
         ? String(
             (data as { message?: string }).message ||
-              "Gagal mengambil data vendor",
+              "Gagal mengambil data vendor"
           )
         : "Gagal mengambil data vendor";
 
@@ -136,7 +143,7 @@ export const refreshVendorProfile = createAsyncThunk<
     console.error("REFRESH VENDOR PROFILE ERROR:", error);
 
     return thunkAPI.rejectWithValue(
-      error instanceof Error ? error.message : "Gagal refresh vendor profile",
+      error instanceof Error ? error.message : "Gagal refresh vendor profile"
     );
   }
 });
@@ -176,7 +183,7 @@ export const loginAndFetchUser = createAsyncThunk<
     };
   } catch (error) {
     return thunkAPI.rejectWithValue(
-      error instanceof Error ? error.message : "Login gagal",
+      error instanceof Error ? error.message : "Login gagal"
     );
   }
 });
@@ -192,12 +199,13 @@ const authSlice = createSlice({
         loginUser: LoginResponse | null;
         vendorData: VendorProfileData | null;
         sessionPassword: string | null;
-      }>,
+      }>
     ) => {
       state.token = action.payload.token;
       state.loginUser = action.payload.loginUser;
       state.vendorData = action.payload.vendorData;
       state.sessionPassword = action.payload.sessionPassword;
+      state.businessId = getBusinessIdFromVendorData(action.payload.vendorData);
       state.isAuthenticated = !!action.payload.token;
       state.hydrated = true;
     },
@@ -206,6 +214,7 @@ const authSlice = createSlice({
       state.loginUser = null;
       state.vendorData = null;
       state.sessionPassword = null;
+      state.businessId = null;
       state.isAuthenticated = false;
       state.loading = false;
       state.error = null;
@@ -227,6 +236,7 @@ const authSlice = createSlice({
         state.loginUser = action.payload.loginUser;
         state.vendorData = action.payload.vendorData;
         state.sessionPassword = action.payload.sessionPassword;
+        state.businessId = getBusinessIdFromVendorData(action.payload.vendorData);
         state.isAuthenticated = true;
         state.hydrated = true;
       })
@@ -234,6 +244,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.payload || "Login gagal";
         state.isAuthenticated = false;
+        state.businessId = null;
         state.hydrated = true;
       })
       .addCase(refreshVendorProfile.pending, (state) => {
@@ -244,6 +255,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = null;
         state.vendorData = action.payload;
+        state.businessId = getBusinessIdFromVendorData(action.payload);
       })
       .addCase(refreshVendorProfile.rejected, (state, action) => {
         state.loading = false;

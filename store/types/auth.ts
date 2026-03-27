@@ -29,6 +29,7 @@ export type VendorProfileData = {
     address: string;
     approvalStatus: string;
     approvedAt: string | null;
+    businessId: string | null;
   };
   createdAt: string;
   updatedAt: string | null;
@@ -43,4 +44,5 @@ export type AuthState = {
   loading: boolean;
   error: string | null;
   hydrated: boolean;
+  businessId: string | null;
 };

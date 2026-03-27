@@ -115,6 +115,8 @@ export function Sidebar({ onLogoutClick }: SidebarProps) {
   const rawStatus =
     vendorData?.status ?? vendorData?.vendorProfile?.approvalStatus ?? "";
 
+  const businessId = vendorData?.vendorProfile?.businessId ?? null;
+  
   const isAdmin = currentRole === "ADMIN";
   const isVendor = currentRole === "VENDOR";
   const isActivatedPartner =

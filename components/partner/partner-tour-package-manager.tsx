@@ -1,13 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Clock3, Image as ImageIcon, Pencil, Trash2, CheckCircle2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Clock3,
+  Image as ImageIcon,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  partnerTourPackagesMock,
-  type PartnerTourPackage,
-} from "@/lib/partner-mock";
-import { TourPackageFormModal } from "@/components/partner/tour-package-form-modal";
+  TourPackageFormModal,
+  type TourPackageActionMode,
+  type TourPackageCompletePayload,
+  type TourPackageFormValue,
+} from "@/components/partner/tour-package-form-modal";
+import { useAppSelector } from "@/store/hooks";
 
 type PackageRequestType = "ADD NEW" | "UPDATE" | "DELETION";
 type PackageRequestStatus = "Processing" | "Approved" | "Rejected";
@@ -22,6 +30,35 @@ type PackageRequestRecord = {
   status: PackageRequestStatus;
 };
 
+type VendorPackageApiItem = {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  duration: number;
+  availability: number;
+  itinerary: string[];
+  included: string[];
+  termsAndConditions: string;
+  pricingPolicy: string;
+  cancellationPolicy: string;
+  requirementDocumentUrl: string | null;
+  photoUrl: string | null;
+  approvalStatus: string;
+  vendorId: string;
+  businessId: string;
+  rejectionReason: string | null;
+  moderationNote: string | null;
+  deletionRequestStatus: string;
+  deletionRequestReason: string | null;
+  deletionReviewNote: string | null;
+  deletionReviewerId: string | null;
+  deletionRequestedAt: string | null;
+  deletionReviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function formatRequestDate() {
   const date = new Date();
   const day = String(date.getDate()).padStart(2, "0");
@@ -30,12 +67,174 @@ function formatRequestDate() {
   return `${day} ${month} ${year}`;
 }
 
+function normalizeNumberString(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[^\d]/g, "");
+}
+
+function formatCurrencyDisplay(value: string | number) {
+  const normalized = normalizeNumberString(value);
+  if (!normalized) return "IDR 0";
+
+  return `IDR ${Number(normalized).toLocaleString("id-ID")}`;
+}
+
+function formatDurationDisplay(value: string | number) {
+  const normalized = normalizeNumberString(value);
+  if (!normalized) return "-";
+  return `${normalized} Days`;
+}
+
+function formatCategoryLabel(value: string) {
+  if (!value) return "-";
+
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((item) => item.charAt(0).toUpperCase() + item.slice(1))
+    .join(" ");
+}
+
+function mapApiPackageToFormValue(
+  item: VendorPackageApiItem,
+): TourPackageFormValue {
+  return {
+    id: item.id,
+    title: item.name ?? "",
+    category: item.category ?? "",
+    price: String(item.price ?? ""),
+    duration: String(item.duration ?? ""),
+    availability: String(item.availability ?? ""),
+    itineraryItems: item.itinerary ?? [""],
+    includedItems: item.included ?? [""],
+    requiredDocumentLabel: "Required Document",
+    requiredDocumentFileName: "",
+    coverImageName: "",
+    imageUrl: item.photoUrl ?? "",
+    termsAndConditions: item.termsAndConditions ?? "",
+    pricingPolicy: item.pricingPolicy ?? "",
+    cancellationPolicy: item.cancellationPolicy ?? "",
+    requirementDocumentUrl: item.requirementDocumentUrl ?? null,
+    approvalStatus: item.approvalStatus ?? "",
+    vendorId: item.vendorId ?? "",
+    businessId: item.businessId ?? "",
+    rejectionReason: item.rejectionReason,
+    moderationNote: item.moderationNote,
+    deletionRequestStatus: item.deletionRequestStatus ?? "",
+    deletionRequestReason: item.deletionRequestReason,
+    deletionReviewNote: item.deletionReviewNote,
+    deletionReviewerId: item.deletionReviewerId,
+    deletionRequestedAt: item.deletionRequestedAt,
+    deletionReviewedAt: item.deletionReviewedAt,
+    createdAt: item.createdAt ?? "",
+    updatedAt: item.updatedAt ?? "",
+  };
+}
+
+async function fetchVendorPackages(
+  token: string,
+  businessId: string,
+): Promise<VendorPackageApiItem[]> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/vendor/businesses/${businessId}/packages`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  const rawText = await response.text();
+
+  let data: unknown = null;
+
+  try {
+    data = rawText ? JSON.parse(rawText) : [];
+    console.log(
+      "GET /vendor/businesses/{businessId}/packages RAW RESPONSE:",
+      data,
+    );
+  } catch {
+    throw new Error(
+      "Response /vendor/businesses/{businessId}/packages tidak valid",
+    );
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengambil data tour package",
+          )
+        : "Gagal mengambil data tour package";
+
+    throw new Error(message);
+  }
+
+  if (!Array.isArray(data)) {
+    throw new Error("Format data package tidak sesuai");
+  }
+
+  return data as VendorPackageApiItem[];
+}
+
 export function PartnerTourPackageManager() {
-  const [packages, setPackages] = useState<PartnerTourPackage[]>(partnerTourPackagesMock);
+  const token = useAppSelector((state) => state.auth.token);
+  const businessId = useAppSelector((state) => state.auth.businessId);
+
+  const [loadingPackages, setLoadingPackages] = useState(false);
+  const [packagesError, setPackagesError] = useState<string | null>(null);
+  const [packages, setPackages] = useState<TourPackageFormValue[]>([]);
   const [requests, setRequests] = useState<PackageRequestRecord[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingPackage, setEditingPackage] = useState<PartnerTourPackage | null>(null);
-  const [actionMode, setActionMode] = useState<"create" | "edit" | "delete">("create");
+  const [editingPackage, setEditingPackage] =
+    useState<TourPackageFormValue | null>(null);
+  const [actionMode, setActionMode] = useState<TourPackageActionMode>("create");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPackages = async () => {
+      if (!token || !businessId) {
+        if (!isMounted) return;
+        setPackages([]);
+        setPackagesError(null);
+        return;
+      }
+
+      try {
+        setLoadingPackages(true);
+        setPackagesError(null);
+
+        const apiPackages = await fetchVendorPackages(token, businessId);
+        const mappedPackages = apiPackages.map(mapApiPackageToFormValue);
+
+        if (!isMounted) return;
+        setPackages(mappedPackages);
+      } catch (error) {
+        if (!isMounted) return;
+
+        setPackages([]);
+        setPackagesError(
+          error instanceof Error
+            ? error.message
+            : "Gagal mengambil data tour package",
+        );
+      } finally {
+        if (!isMounted) return;
+        setLoadingPackages(false);
+      }
+    };
+
+    loadPackages();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, businessId]);
 
   const featuredPackage = useMemo(() => packages[0] ?? null, [packages]);
 
@@ -45,23 +244,32 @@ export function PartnerTourPackageManager() {
     setModalOpen(true);
   };
 
-  const openEditModal = (pkg: PartnerTourPackage) => {
+  const openViewModal = (pkg: TourPackageFormValue) => {
+    setActionMode("view");
+    setEditingPackage(pkg);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (pkg: TourPackageFormValue) => {
     setActionMode("edit");
     setEditingPackage(pkg);
     setModalOpen(true);
   };
 
-  const openDeleteModal = (pkg: PartnerTourPackage) => {
+  const openDeleteModal = (pkg: TourPackageFormValue) => {
     setActionMode("delete");
     setEditingPackage(pkg);
     setModalOpen(true);
   };
 
-  const addRequestRecord = (values: PartnerTourPackage, type: PackageRequestType) => {
+  const addRequestRecord = (
+    values: TourPackageFormValue,
+    type: PackageRequestType,
+  ) => {
     const newRecord: PackageRequestRecord = {
       id: String(requests.length + 1).padStart(5, "0"),
       packageName: values.title,
-      category: values.category,
+      category: formatCategoryLabel(values.category),
       date: formatRequestDate(),
       type,
       feedback: "-",
@@ -74,10 +282,7 @@ export function PartnerTourPackageManager() {
   const handleCompleteAction = ({
     action,
     values,
-  }: {
-    action: "create" | "edit" | "delete";
-    values: PartnerTourPackage;
-  }) => {
+  }: TourPackageCompletePayload) => {
     if (action === "create") {
       setPackages((prev) => [...prev, values]);
       addRequestRecord(values, "ADD NEW");
@@ -86,13 +291,12 @@ export function PartnerTourPackageManager() {
 
     if (action === "edit") {
       setPackages((prev) =>
-        prev.map((item) => (item.id === values.id ? values : item))
+        prev.map((item) => (item.id === values.id ? values : item)),
       );
       addRequestRecord(values, "UPDATE");
       return;
     }
 
-    // delete request: tidak langsung hapus paket, hanya submit request deletion
     addRequestRecord(values, "DELETION");
   };
 
@@ -102,9 +306,23 @@ export function PartnerTourPackageManager() {
 
       {featuredPackage && (
         <div className="max-w-md rounded-3xl border border-border bg-background p-5 shadow-sm">
+          <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-muted/20">
+            {featuredPackage.imageUrl ? (
+              <img
+                src={featuredPackage.imageUrl}
+                alt={featuredPackage.title}
+                className="h-52 w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-52 items-center justify-center">
+                <ImageIcon className="h-10 w-10 text-muted-foreground" />
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-2 text-muted-foreground">
             <Clock3 className="h-4 w-4" />
-            <span>{featuredPackage.duration}</span>
+            <span>{formatDurationDisplay(featuredPackage.duration)}</span>
           </div>
 
           <h2 className="mt-5 text-3xl font-bold text-foreground">
@@ -112,11 +330,17 @@ export function PartnerTourPackageManager() {
           </h2>
 
           <p className="mt-2 text-5xl font-bold text-foreground">
-            {featuredPackage.price}
+            {formatCurrencyDisplay(featuredPackage.price)}
             <span className="ml-2 text-3xl font-normal text-muted-foreground">
               / Person
             </span>
           </p>
+
+          <div className="mt-4">
+            <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+              {formatCategoryLabel(featuredPackage.category)}
+            </span>
+          </div>
 
           <div className="mt-6 border-t border-border pt-5">
             <p className="mb-3 font-semibold uppercase text-muted-foreground">
@@ -124,8 +348,11 @@ export function PartnerTourPackageManager() {
             </p>
 
             <ul className="space-y-2 text-lg text-foreground/80">
-              {featuredPackage.includedItems.map((item) => (
-                <li key={item} className="flex items-center gap-2">
+              {featuredPackage.includedItems.map((item, index) => (
+                <li
+                  key={`${item}-${index}`}
+                  className="flex items-center gap-2"
+                >
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                   {item}
                 </li>
@@ -135,7 +362,7 @@ export function PartnerTourPackageManager() {
 
           <Button
             className="mt-6 h-12 w-full rounded-xl bg-emerald-700 text-lg hover:bg-emerald-800"
-            onClick={() => openEditModal(featuredPackage)}
+            onClick={() => openViewModal(featuredPackage)}
           >
             See Details →
           </Button>
@@ -156,6 +383,16 @@ export function PartnerTourPackageManager() {
           </Button>
         </div>
 
+        {loadingPackages && (
+          <p className="mb-4 text-sm text-muted-foreground">
+            Loading tour packages...
+          </p>
+        )}
+
+        {packagesError && (
+          <p className="mb-4 text-sm text-red-500">{packagesError}</p>
+        )}
+
         <div className="overflow-hidden rounded-2xl border border-border bg-background">
           <table className="w-full">
             <thead>
@@ -173,16 +410,36 @@ export function PartnerTourPackageManager() {
               {packages.map((pkg) => (
                 <tr key={pkg.id} className="border-t border-border">
                   <td className="px-6 py-5">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-border">
-                      <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                    <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/20">
+                      {pkg.imageUrl ? (
+                        <img
+                          src={pkg.imageUrl}
+                          alt={pkg.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-5">{pkg.title}</td>
-                  <td className="px-6 py-5">{pkg.category}</td>
-                  <td className="px-6 py-5">{pkg.price}/Person</td>
+                  <td className="px-6 py-5">
+                    {formatCategoryLabel(pkg.category)}
+                  </td>
+                  <td className="px-6 py-5">
+                    {formatCurrencyDisplay(pkg.price)}/Person
+                  </td>
                   <td className="px-6 py-5">{pkg.availability}</td>
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openViewModal(pkg)}
+                        className="rounded-lg border border-border px-3 py-2 text-sm text-foreground transition hover:bg-muted"
+                      >
+                        See Details
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => openEditModal(pkg)}
@@ -203,9 +460,12 @@ export function PartnerTourPackageManager() {
                 </tr>
               ))}
 
-              {packages.length === 0 && (
+              {packages.length === 0 && !loadingPackages && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                  <td
+                    colSpan={6}
+                    className="px-6 py-12 text-center text-muted-foreground"
+                  >
                     Belum ada paket wisata.
                   </td>
                 </tr>
@@ -238,7 +498,9 @@ export function PartnerTourPackageManager() {
 
             <div className="flex flex-col items-center text-muted-foreground">
               <div className="h-5 w-5 rounded-full border border-border bg-background" />
-              <span className="mt-2 text-xs text-muted-foreground">Success</span>
+              <span className="mt-2 text-xs text-muted-foreground">
+                Success
+              </span>
             </div>
           </div>
         </div>

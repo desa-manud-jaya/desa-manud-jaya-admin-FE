@@ -4,19 +4,53 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, MinusCircle, PlusCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import type { PartnerTourPackage } from "@/lib/partner-mock";
 
-type TourPackageActionMode = "create" | "edit" | "delete";
+export type TourPackageActionMode = "create" | "edit" | "delete" | "view";
+export type TourPackageSubmitAction = Exclude<TourPackageActionMode, "view">;
+
+export type TourPackageFormValue = {
+  id: string;
+  title: string;
+  category: string;
+  price: string;
+  duration: string;
+  availability: string;
+  itineraryItems: string[];
+  includedItems: string[];
+  requiredDocumentLabel: string;
+  requiredDocumentFileName: string;
+  coverImageName: string;
+  imageUrl?: string;
+  termsAndConditions?: string;
+  pricingPolicy?: string;
+  cancellationPolicy?: string;
+  requirementDocumentUrl?: string | null;
+  approvalStatus?: string;
+  vendorId?: string;
+  businessId?: string;
+  rejectionReason?: string | null;
+  moderationNote?: string | null;
+  deletionRequestStatus?: string;
+  deletionRequestReason?: string | null;
+  deletionReviewNote?: string | null;
+  deletionReviewerId?: string | null;
+  deletionRequestedAt?: string | null;
+  deletionReviewedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type TourPackageCompletePayload = {
+  action: TourPackageSubmitAction;
+  values: TourPackageFormValue;
+};
 
 type TourPackageFormModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: TourPackageActionMode;
-  initialData?: PartnerTourPackage | null;
-  onComplete: (payload: {
-    action: TourPackageActionMode;
-    values: PartnerTourPackage;
-  }) => void;
+  initialData?: TourPackageFormValue | null;
+  onComplete: (payload: TourPackageCompletePayload) => void;
 };
 
 type TourPackageErrors = Partial<
@@ -45,9 +79,14 @@ type SuccessState = {
   description: string;
 };
 
-const categories = ["Eco", "Adventure", "Nature", "Culture"];
+const categoryOptions = [
+  { value: "ECO", label: "Eco" },
+  { value: "ADVENTURE", label: "Adventure" },
+  { value: "NATURE", label: "Nature" },
+  { value: "CULTURE", label: "Culture" },
+];
 
-const emptyForm: PartnerTourPackage = {
+const emptyForm: TourPackageFormValue = {
   id: "",
   title: "",
   category: "",
@@ -59,13 +98,49 @@ const emptyForm: PartnerTourPackage = {
   requiredDocumentLabel: "Document",
   requiredDocumentFileName: "",
   coverImageName: "",
+  imageUrl: "",
+  termsAndConditions: "",
+  pricingPolicy: "",
+  cancellationPolicy: "",
+  requirementDocumentUrl: null,
+  approvalStatus: "",
+  vendorId: "",
+  businessId: "",
+  rejectionReason: null,
+  moderationNote: null,
+  deletionRequestStatus: "",
+  deletionRequestReason: null,
+  deletionReviewNote: null,
+  deletionReviewerId: null,
+  deletionRequestedAt: null,
+  deletionReviewedAt: null,
+  createdAt: "",
+  updatedAt: "",
 };
 
 const baseInputClassName =
   "h-12 w-full rounded-xl border border-blue-300 bg-background px-4 text-sm outline-none transition focus:border-blue-500";
 
 function getInputClassName(disabled?: boolean) {
-  return `${baseInputClassName}${disabled ? " bg-muted text-muted-foreground" : ""}`;
+  return `${baseInputClassName}${
+    disabled ? " bg-muted text-muted-foreground" : ""
+  }`;
+}
+
+function formatCategoryLabel(value: string) {
+  if (!value) return "-";
+
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((item) => item.charAt(0).toUpperCase() + item.slice(1))
+    .join(" ");
+}
+
+function formatCurrencyPreview(value: string) {
+  const normalized = value.replace(/[^\d]/g, "");
+  if (!normalized) return "IDR 0";
+  return `IDR ${Number(normalized).toLocaleString("id-ID")}`;
 }
 
 export function TourPackageFormModal({
@@ -78,7 +153,7 @@ export function TourPackageFormModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const documentInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [form, setForm] = useState<PartnerTourPackage>(emptyForm);
+  const [form, setForm] = useState<TourPackageFormValue>(emptyForm);
   const [errors, setErrors] = useState<TourPackageErrors>({});
   const [confirmState, setConfirmState] = useState<ConfirmState>({
     open: false,
@@ -90,23 +165,35 @@ export function TourPackageFormModal({
     title: "",
     description: "",
   });
-  const [pendingPayload, setPendingPayload] = useState<{
-    action: TourPackageActionMode;
-    values: PartnerTourPackage;
-  } | null>(null);
+  const [pendingPayload, setPendingPayload] =
+    useState<TourPackageCompletePayload | null>(null);
 
   const isDeleteMode = mode === "delete";
+  const isViewMode = mode === "view";
+  const isReadOnly = isDeleteMode || isViewMode;
 
   useEffect(() => {
     if (!open) return;
 
-    if ((mode === "edit" || mode === "delete") && initialData) {
+    if (
+      (mode === "edit" || mode === "delete" || mode === "view") &&
+      initialData
+    ) {
       setForm({
+        ...emptyForm,
         ...initialData,
         requiredDocumentLabel:
           mode === "delete"
             ? "Product Deletion Request Form"
-            : initialData.requiredDocumentLabel || "Safety Certification",
+            : initialData.requiredDocumentLabel || "Required Document",
+        itineraryItems:
+          initialData.itineraryItems?.length > 0
+            ? initialData.itineraryItems
+            : [""],
+        includedItems:
+          initialData.includedItems?.length > 0
+            ? initialData.includedItems
+            : [""],
       });
     } else {
       setForm(emptyForm);
@@ -118,7 +205,7 @@ export function TourPackageFormModal({
     setPendingPayload(null);
   }, [open, mode, initialData]);
 
-  const handleChange = (field: keyof PartnerTourPackage, value: string) => {
+  const handleChange = (field: keyof TourPackageFormValue, value: string) => {
     setForm((prev) => ({
       ...prev,
       [field]: value,
@@ -135,7 +222,7 @@ export function TourPackageFormModal({
     index: number,
     value: string
   ) => {
-    if (isDeleteMode) return;
+    if (isReadOnly) return;
 
     setForm((prev) => ({
       ...prev,
@@ -149,7 +236,7 @@ export function TourPackageFormModal({
   };
 
   const addArrayItem = (field: "itineraryItems" | "includedItems") => {
-    if (isDeleteMode) return;
+    if (isReadOnly) return;
 
     setForm((prev) => ({
       ...prev,
@@ -158,7 +245,7 @@ export function TourPackageFormModal({
   };
 
   const removeArrayItem = (field: "itineraryItems" | "includedItems") => {
-    if (isDeleteMode) return;
+    if (isReadOnly) return;
 
     setForm((prev) => {
       if (prev[field].length <= 1) return prev;
@@ -174,14 +261,20 @@ export function TourPackageFormModal({
     const nextErrors: TourPackageErrors = {};
 
     if (!isDeleteMode) {
-      if (!form.title.trim()) nextErrors.title = "Please enter your tour package name.";
-      if (!form.category.trim()) nextErrors.category = "Please select your category.";
-      if (!form.price.trim()) nextErrors.price = "Please enter your package price.";
-      if (!form.duration.trim()) nextErrors.duration = "Please enter your package duration.";
-      if (!form.availability.trim()) nextErrors.availability = "Please enter your package availability.";
+      if (!form.title.trim())
+        nextErrors.title = "Please enter your tour package name.";
+      if (!form.category.trim())
+        nextErrors.category = "Please select your category.";
+      if (!form.price.trim())
+        nextErrors.price = "Please enter your package price.";
+      if (!form.duration.trim())
+        nextErrors.duration = "Please enter your package duration.";
+      if (!form.availability.trim())
+        nextErrors.availability = "Please enter your package availability.";
 
       if (form.itineraryItems.filter((item) => item.trim() !== "").length === 0) {
-        nextErrors.itineraryItems = "Please enter your tour package itinerary.";
+        nextErrors.itineraryItems =
+          "Please enter your tour package itinerary.";
       }
 
       if (form.includedItems.filter((item) => item.trim() !== "").length === 0) {
@@ -197,6 +290,11 @@ export function TourPackageFormModal({
   };
 
   const openConfirm = () => {
+    if (isViewMode) {
+      onOpenChange(false);
+      return;
+    }
+
     const nextErrors = validate();
 
     if (Object.keys(nextErrors).length > 0) {
@@ -204,15 +302,18 @@ export function TourPackageFormModal({
       return;
     }
 
-    const payload: PartnerTourPackage = {
+    const payload: TourPackageFormValue = {
       ...form,
       id: form.id || `pkg-${Date.now()}`,
       itineraryItems: form.itineraryItems.filter((item) => item.trim() !== ""),
       includedItems: form.includedItems.filter((item) => item.trim() !== ""),
     };
 
+    const nextAction: TourPackageSubmitAction =
+      mode === "delete" ? "delete" : mode === "edit" ? "edit" : "create";
+
     setPendingPayload({
-      action: mode,
+      action: nextAction,
       values: payload,
     });
 
@@ -280,7 +381,7 @@ export function TourPackageFormModal({
             <input
               key={`${field}-${index}`}
               value={item}
-              disabled={isDeleteMode}
+              disabled={isReadOnly}
               onChange={(e) => handleArrayChange(field, index, e.target.value)}
               placeholder={
                 field === "itineraryItems"
@@ -296,32 +397,35 @@ export function TourPackageFormModal({
           ))}
         </div>
 
-        <div className="mt-3 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => addArrayItem(field)}
-            disabled={isDeleteMode}
-            className="inline-flex items-center justify-center rounded-full text-green-600 transition hover:scale-105 disabled:opacity-40"
-          >
-            <PlusCircle className="h-5 w-5" />
-          </button>
+        {!isViewMode && (
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => addArrayItem(field)}
+              disabled={isReadOnly}
+              className="inline-flex items-center justify-center rounded-full text-green-600 transition hover:scale-105 disabled:opacity-40"
+            >
+              <PlusCircle className="h-5 w-5" />
+            </button>
 
-          <button
-            type="button"
-            onClick={() => removeArrayItem(field)}
-            disabled={isDeleteMode}
-            className="inline-flex items-center justify-center rounded-full text-yellow-500 transition hover:scale-105 disabled:opacity-40"
-          >
-            <MinusCircle className="h-5 w-5" />
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => removeArrayItem(field)}
+              disabled={isReadOnly}
+              className="inline-flex items-center justify-center rounded-full text-yellow-500 transition hover:scale-105 disabled:opacity-40"
+            >
+              <MinusCircle className="h-5 w-5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
     </div>
   );
 
-  const primaryButtonLabel = mode === "delete" ? "Delete" : "Save";
+  const primaryButtonLabel =
+    mode === "delete" ? "Delete" : mode === "view" ? "Close" : "Save";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -331,7 +435,9 @@ export function TourPackageFormModal({
             ? "Add New Tour Package"
             : mode === "edit"
             ? "Edit Tour Package"
-            : "Delete Tour Package"}
+            : mode === "delete"
+            ? "Delete Tour Package"
+            : "Tour Package Details"}
         </DialogTitle>
 
         <button
@@ -343,145 +449,267 @@ export function TourPackageFormModal({
         </button>
 
         <div className="hide-scrollbar max-h-[85vh] overflow-y-auto px-8 py-8 md:px-12">
-          <div className="mb-8 flex flex-col items-center">
-            <button
-              type="button"
-              onClick={() => {
-                if (!isDeleteMode) fileInputRef.current?.click();
-              }}
-              className="flex h-20 w-20 items-center justify-center rounded-full bg-muted"
-            >
-              <Camera className="h-8 w-8 text-muted-foreground" />
-            </button>
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">
+                {mode === "create"
+                  ? "Add New Tour Package"
+                  : mode === "edit"
+                  ? "Edit Tour Package"
+                  : mode === "delete"
+                  ? "Delete Tour Package"
+                  : "Tour Package Details"}
+              </h2>
 
-            <p className="mt-3 text-base text-muted-foreground">
+              {form.approvalStatus && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Approval Status:{" "}
+                  <span className="font-medium text-foreground">
+                    {form.approvalStatus}
+                  </span>
+                </p>
+              )}
+            </div>
+
+            {mode !== "create" && form.category && (
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                {formatCategoryLabel(form.category)}
+              </span>
+            )}
+          </div>
+
+          <div className="mb-8 flex flex-col items-center">
+            <div className="mb-3 flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-muted">
+              {form.imageUrl ? (
+                <img
+                  src={form.imageUrl}
+                  alt={form.title || "Tour Package"}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isReadOnly) fileInputRef.current?.click();
+                  }}
+                  className="flex h-full w-full items-center justify-center"
+                >
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+
+            <p className="text-base text-muted-foreground">
               {form.coverImageName || "Upload cover image"}
             </p>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                handleChange("coverImageName", file.name);
-                console.log("TOUR PACKAGE COVER IMAGE:", file);
-              }}
-            />
+            {!isViewMode && (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  handleChange("coverImageName", file.name);
+                  console.log("TOUR PACKAGE COVER IMAGE:", file);
+                }}
+              />
+            )}
           </div>
 
           <div className="grid gap-8 md:grid-cols-2">
             <div className="space-y-5">
               <div>
-                <label className="mb-2 block text-sm font-medium">Tour Package Name*</label>
+                <label className="mb-2 block text-sm font-medium">
+                  Tour Package Name*
+                </label>
                 <input
                   value={form.title}
-                  disabled={isDeleteMode}
+                  disabled={isReadOnly}
                   onChange={(e) => handleChange("title", e.target.value)}
                   placeholder="Enter your tour package name"
-                  className={getInputClassName(isDeleteMode)}
+                  className={getInputClassName(isReadOnly)}
                 />
-                {errors.title && <p className="mt-2 text-sm text-red-500">{errors.title}</p>}
+                {errors.title && (
+                  <p className="mt-2 text-sm text-red-500">{errors.title}</p>
+                )}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">Category*</label>
+                <label className="mb-2 block text-sm font-medium">
+                  Category*
+                </label>
                 <select
                   value={form.category}
-                  disabled={isDeleteMode}
+                  disabled={isReadOnly}
                   onChange={(e) => handleChange("category", e.target.value)}
-                  className={getInputClassName(isDeleteMode)}
+                  className={getInputClassName(isReadOnly)}
                 >
                   <option value="">Select your tour package category</option>
-                  {categories.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
+                  {categoryOptions.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
                     </option>
                   ))}
                 </select>
-                {errors.category && <p className="mt-2 text-sm text-red-500">{errors.category}</p>}
+                {errors.category && (
+                  <p className="mt-2 text-sm text-red-500">{errors.category}</p>
+                )}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">Price (per person)*</label>
+                <label className="mb-2 block text-sm font-medium">
+                  Price (per person)*
+                </label>
                 <input
                   value={form.price}
-                  disabled={isDeleteMode}
+                  disabled={isReadOnly}
                   onChange={(e) => handleChange("price", e.target.value)}
                   placeholder="Enter your tour package price"
-                  className={getInputClassName(isDeleteMode)}
+                  className={getInputClassName(isReadOnly)}
                 />
-                {errors.price && <p className="mt-2 text-sm text-red-500">{errors.price}</p>}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Preview: {formatCurrencyPreview(form.price)}
+                </p>
+                {errors.price && (
+                  <p className="mt-2 text-sm text-red-500">{errors.price}</p>
+                )}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">Duration*</label>
+                <label className="mb-2 block text-sm font-medium">
+                  Duration*
+                </label>
                 <input
                   value={form.duration}
-                  disabled={isDeleteMode}
+                  disabled={isReadOnly}
                   onChange={(e) => handleChange("duration", e.target.value)}
                   placeholder="Enter your tour package duration"
-                  className={getInputClassName(isDeleteMode)}
+                  className={getInputClassName(isReadOnly)}
                 />
-                {errors.duration && <p className="mt-2 text-sm text-red-500">{errors.duration}</p>}
+                {errors.duration && (
+                  <p className="mt-2 text-sm text-red-500">{errors.duration}</p>
+                )}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">Availability*</label>
+                <label className="mb-2 block text-sm font-medium">
+                  Availability*
+                </label>
                 <input
                   value={form.availability}
-                  disabled={isDeleteMode}
+                  disabled={isReadOnly}
                   onChange={(e) => handleChange("availability", e.target.value)}
                   placeholder="Enter your tour package availability"
-                  className={getInputClassName(isDeleteMode)}
+                  className={getInputClassName(isReadOnly)}
                 />
                 {errors.availability && (
-                  <p className="mt-2 text-sm text-red-500">{errors.availability}</p>
+                  <p className="mt-2 text-sm text-red-500">
+                    {errors.availability}
+                  </p>
                 )}
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Terms & Conditions
+                </label>
+                <textarea
+                  value={form.termsAndConditions ?? ""}
+                  disabled={isReadOnly}
+                  onChange={(e) =>
+                    handleChange("termsAndConditions", e.target.value)
+                  }
+                  placeholder="Enter terms & conditions"
+                  className="min-h-[110px] w-full rounded-xl border border-blue-300 bg-background px-4 py-3 text-sm outline-none transition focus:border-blue-500 disabled:bg-muted disabled:text-muted-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Pricing Policy
+                </label>
+                <textarea
+                  value={form.pricingPolicy ?? ""}
+                  disabled={isReadOnly}
+                  onChange={(e) => handleChange("pricingPolicy", e.target.value)}
+                  placeholder="Enter pricing policy"
+                  className="min-h-[110px] w-full rounded-xl border border-blue-300 bg-background px-4 py-3 text-sm outline-none transition focus:border-blue-500 disabled:bg-muted disabled:text-muted-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Cancellation Policy
+                </label>
+                <textarea
+                  value={form.cancellationPolicy ?? ""}
+                  disabled={isReadOnly}
+                  onChange={(e) =>
+                    handleChange("cancellationPolicy", e.target.value)
+                  }
+                  placeholder="Enter cancellation policy"
+                  className="min-h-[110px] w-full rounded-xl border border-blue-300 bg-background px-4 py-3 text-sm outline-none transition focus:border-blue-500 disabled:bg-muted disabled:text-muted-foreground"
+                />
               </div>
             </div>
 
             <div className="space-y-5">
-              {renderArrayField("Itinerary*", "itineraryItems", errors.itineraryItems)}
-              {renderArrayField("Included*", "includedItems", errors.includedItems)}
+              {renderArrayField(
+                "Itinerary*",
+                "itineraryItems",
+                errors.itineraryItems
+              )}
+
+              {renderArrayField(
+                "Included*",
+                "includedItems",
+                errors.includedItems
+              )}
 
               <div>
-                <label className="mb-2 block text-sm font-medium">Required Document*</label>
+                <label className="mb-2 block text-sm font-medium">
+                  Required Document*
+                </label>
 
                 <div className="flex flex-col gap-3 rounded-xl border border-blue-300 bg-background p-3 sm:flex-row sm:items-center">
                   <input
                     value={form.requiredDocumentLabel}
-                    disabled={isDeleteMode}
+                    disabled={isReadOnly}
                     onChange={(e) =>
                       handleChange("requiredDocumentLabel", e.target.value)
                     }
                     className="h-10 flex-1 rounded-lg border border-border px-3 text-sm outline-none focus:border-blue-400 disabled:bg-muted disabled:text-muted-foreground"
                   />
 
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="shrink-0"
-                    onClick={() => {
-                      if (!isDeleteMode) documentInputRef.current?.click();
-                    }}
-                  >
-                    Upload
-                  </Button>
+                  {!isViewMode && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="shrink-0"
+                      onClick={() => {
+                        if (!isReadOnly) documentInputRef.current?.click();
+                      }}
+                    >
+                      Upload
+                    </Button>
+                  )}
 
-                  <input
-                    ref={documentInputRef}
-                    type="file"
-                    hidden
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      handleChange("requiredDocumentFileName", file.name);
-                      console.log("TOUR PACKAGE REQUIRED DOCUMENT:", file);
-                    }}
-                  />
+                  {!isViewMode && (
+                    <input
+                      ref={documentInputRef}
+                      type="file"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        handleChange("requiredDocumentFileName", file.name);
+                        console.log("TOUR PACKAGE REQUIRED DOCUMENT:", file);
+                      }}
+                    />
+                  )}
                 </div>
 
                 {form.requiredDocumentFileName && (
@@ -490,27 +718,69 @@ export function TourPackageFormModal({
                   </p>
                 )}
 
+                {form.requirementDocumentUrl && (
+                  <a
+                    href={form.requirementDocumentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block truncate text-sm text-blue-600 hover:underline"
+                  >
+                    Open uploaded document
+                  </a>
+                )}
+
                 {errors.requiredDocumentLabel && (
                   <p className="mt-2 text-sm text-red-500">
                     {errors.requiredDocumentLabel}
                   </p>
                 )}
               </div>
+
+              {(form.rejectionReason || form.moderationNote) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold text-amber-800">
+                    Review Notes
+                  </p>
+
+                  {form.rejectionReason && (
+                    <p className="mt-2 text-sm text-amber-700">
+                      Rejection Reason: {form.rejectionReason}
+                    </p>
+                  )}
+
+                  {form.moderationNote && (
+                    <p className="mt-2 text-sm text-amber-700">
+                      Moderation Note: {form.moderationNote}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex justify-center gap-3">
             <Button
               type="button"
-              onClick={openConfirm}
-              className={
-                mode === "delete"
-                  ? "min-w-[180px] bg-red-500 hover:bg-red-600"
-                  : "min-w-[180px] bg-blue-500 hover:bg-blue-600"
-              }
+              variant="secondary"
+              className="min-w-[180px]"
+              onClick={() => onOpenChange(false)}
             >
-              {primaryButtonLabel}
+              {isViewMode ? "Close" : "Cancel"}
             </Button>
+
+            {!isViewMode && (
+              <Button
+                type="button"
+                onClick={openConfirm}
+                className={
+                  mode === "delete"
+                    ? "min-w-[180px] bg-red-500 hover:bg-red-600"
+                    : "min-w-[180px] bg-blue-500 hover:bg-blue-600"
+                }
+              >
+                {primaryButtonLabel}
+              </Button>
+            )}
           </div>
         </div>
 

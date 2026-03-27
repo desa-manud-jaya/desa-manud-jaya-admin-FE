@@ -209,6 +209,8 @@ export default function PackageManagePage() {
 
   const rawStatus =
     vendorData?.status ?? vendorData?.vendorProfile?.approvalStatus ?? "";
+  
+  const businessId = vendorData?.vendorProfile?.businessId ?? null;
 
   const isPending = rawStatus === "PENDING";
   const isActivated =

@@ -91,7 +91,7 @@ const router = useRouter();
         "",
       businessType: mapBusinessTypeFromApi(
         vendorData.vendorProfile?.jenisUsaha,
-      ),
+    ),
       email: vendorData.email ?? "",
       nib: vendorData.vendorProfile?.nib ?? "",
       bankAccountName: vendorData.vendorProfile?.bankAccountName ?? "",

@@ -143,6 +143,8 @@ export default function DashboardPage() {
     vendorStatus === "ACTIVATED" ||
     vendorStatus === "ACTIVE";
 
+  const businessId = vendorData?.vendorProfile?.businessId ?? null;
+  
   return (
     <DashboardLayout>
       {isVendor ? (

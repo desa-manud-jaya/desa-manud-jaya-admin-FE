@@ -67,6 +67,7 @@ export function Header({ onLogoutClick }: HeaderProps) {
     "Pengguna";
 
   const rawRole = loginUser?.role ?? vendorData?.role ?? null;
+  const businessId = vendorData?.vendorProfile?.businessId ?? null;
   const displayRole = mapRoleLabel(rawRole);
 
   console.log("HEADER REDUX loginUser:", loginUser);
