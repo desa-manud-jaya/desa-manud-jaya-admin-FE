@@ -19,7 +19,7 @@
 - Dashboard shell and admin layout components live in `components/dashboard/`
 - Vendor-facing dashboard/package components live in `components/partner/`
 - Redux store lives in `store/`
-- Shared helpers live in `lib/`
+- Shared helpers and temporary mock-backed metrics live in `lib/`
 
 ## Routing Notes
 - `/` redirects to `/login`
@@ -52,6 +52,11 @@
 ## Auth Notes
 - Login flow currently calls `POST /auth/login`
 - Vendor profile flow currently calls `GET /vendor`
+- Supported portal login roles are:
+  - `ADMIN`
+  - `VENDOR`
+- `USER` / traveler accounts must be rejected at login and must not be allowed into this portal
+- Any unsupported role should also be rejected with a clear message
 - Admin approval flows currently call:
   - `GET /admin/vendors/pending`
   - `POST /admin/vendors/:userId/approve`
@@ -59,7 +64,7 @@
 - Be careful with auth persistence changes: current code stores token, login user, vendor data, and session password in localStorage
 
 ## Role-Based Behavior
-- Supported roles observed in the app:
+- Supported roles currently implemented in the app:
   - `ADMIN`
   - `VENDOR`
 - Admin UI uses admin-focused menu items and approval workflows
@@ -68,6 +73,22 @@
   - `APPROVED`
   - `ACTIVATED`
   - `ACTIVE`
+
+## Admin Dashboard Notes
+- The admin dashboard is no longer fully static
+- These metrics are currently dynamic and should stay aligned with `pusat-persetujuan` data sources:
+  - pending vendor registrations
+  - pending tour package approvals
+  - pending deletion requests
+- Current dynamic sources:
+  - pending vendors from `store/slices/admin-approval-slice.ts`
+  - pending packages from `GET /admin/packages/pending`
+  - deletion requests from `GET /admin/packages/deletion-requests?page=0&size=10`
+- These metrics are currently temporary mock-backed values until backend APIs are available:
+  - active partners
+  - active tour packages
+- Temporary mock values live in `lib/admin-dashboard-mock.ts` and should be replaced once the real APIs are ready
+- The remaining cards currently stay as-is unless the task explicitly asks to change them
 
 ## UI and Styling Conventions
 - Use existing `components/ui/*` primitives before introducing new base components
@@ -83,6 +104,7 @@
 - Keep role-based branching explicit and easy to follow
 - Reuse Redux hooks from `store/hooks.ts`
 - Reuse existing dashboard shell components instead of duplicating layout wrappers
+- For new dashboard metrics, prefer extracting reusable fetch/service helpers if the same API logic is needed in multiple screens
 
 ## Things to Watch Out For
 - `next.config.mjs` currently ignores TypeScript build errors via `typescript.ignoreBuildErrors = true`
@@ -92,10 +114,12 @@
   - `lib/api.ts` vs direct `fetch` usage
 - Some partner routes are placeholders marked under development
 - Avoid introducing more auth persistence risk; do not store secrets in localStorage unless explicitly required
+- Replace temporary dashboard mock metrics with API-backed values as soon as backend endpoints are available
 
 ## Suggested Cleanup Opportunities
 - Remove or gate debug logging
 - Standardize API access around shared helpers/services
 - Revisit localStorage persistence of `sessionPassword`
 - Add environment setup documentation for `NEXT_PUBLIC_API_BASE_URL`
+- Replace `lib/admin-dashboard-mock.ts` with real API integration when available
 - Add tests for auth and approval flows if the repo evolves further
