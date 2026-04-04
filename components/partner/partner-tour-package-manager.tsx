@@ -471,8 +471,6 @@ export function PartnerTourPackageManager() {
     loadPackages();
   }, [loadPackages]);
 
-  const featuredPackage = useMemo(() => packages[0] ?? null, [packages]);
-
   const trackingRequests = useMemo(() => {
     return packages
       .filter(
@@ -598,69 +596,85 @@ export function PartnerTourPackageManager() {
   return (
     <div className="space-y-10">
       <h1 className="text-2xl font-bold text-foreground">My Tour Package</h1>
+      {!loadingPackages && !packagesError && packages.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-border bg-background p-8 text-center text-muted-foreground">
+          Belum ada paket wisata.
+        </div>
+      )}
 
-      {featuredPackage && (
-        <div className="max-w-md rounded-3xl border border-border bg-background p-5 shadow-sm">
-          <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-muted/20">
-            {featuredPackage.imageUrl ? (
-              <img
-                src={featuredPackage.imageUrl}
-                alt={featuredPackage.title}
-                className="h-52 w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-52 items-center justify-center">
-                <ImageIcon className="h-10 w-10 text-muted-foreground" />
+      {packages.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {packages.map((pkg) => (
+            <div
+              key={pkg.id}
+              className="rounded-3xl border border-border bg-background p-5 shadow-sm"
+            >
+              <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-muted/20">
+                {pkg.imageUrl ? (
+                  <img
+                    src={pkg.imageUrl}
+                    alt={pkg.title}
+                    className="h-52 w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-52 items-center justify-center">
+                    <ImageIcon className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Clock3 className="h-4 w-4" />
-            <span>{formatDurationDisplay(featuredPackage.duration)}</span>
-          </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Clock3 className="h-4 w-4" />
+                <span>{formatDurationDisplay(pkg.duration)}</span>
+              </div>
 
-          <h2 className="mt-5 text-3xl font-bold text-foreground">
-            {featuredPackage.title}
-          </h2>
+              <h2 className="mt-5 line-clamp-2 text-3xl font-bold text-foreground">
+                {pkg.title}
+              </h2>
 
-          <p className="mt-2 text-5xl font-bold text-foreground">
-            {formatCurrencyDisplay(featuredPackage.price)}
-            <span className="ml-2 text-3xl font-normal text-muted-foreground">
-              / Person
-            </span>
-          </p>
+              <p className="mt-2 text-4xl font-bold text-foreground">
+                {formatCurrencyDisplay(pkg.price)}
+                <span className="ml-2 text-2xl font-normal text-muted-foreground">
+                  / Person
+                </span>
+              </p>
 
-          <div className="mt-4">
-            <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
-              {formatCategoryLabel(featuredPackage.category)}
-            </span>
-          </div>
+              <div className="mt-4 flex items-center justify-between">
+                <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                  {formatCategoryLabel(pkg.category)}
+                </span>
 
-          <div className="mt-6 border-t border-border pt-5">
-            <p className="mb-3 font-semibold uppercase text-muted-foreground">
-              Include:
-            </p>
+                <span className="text-sm text-muted-foreground">
+                  Availability: {pkg.availability}
+                </span>
+              </div>
 
-            <ul className="space-y-2 text-lg text-foreground/80">
-              {featuredPackage.includedItems.map((item, index) => (
-                <li
-                  key={`${item}-${index}`}
-                  className="flex items-center gap-2"
-                >
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
+              <div className="mt-6 border-t border-border pt-5">
+                <p className="mb-3 font-semibold uppercase text-muted-foreground">
+                  Include:
+                </p>
 
-          <Button
-            className="mt-6 h-12 w-full rounded-xl bg-emerald-700 text-lg hover:bg-emerald-800"
-            onClick={() => openViewModal(featuredPackage)}
-          >
-            See Details →
-          </Button>
+                <ul className="space-y-2 text-base text-foreground/80">
+                  {pkg.includedItems.slice(0, 4).map((item, index) => (
+                    <li
+                      key={`${item}-${index}`}
+                      className="flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                      <span className="line-clamp-1">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <Button
+                className="mt-6 h-12 w-full rounded-xl bg-emerald-700 text-lg hover:bg-emerald-800"
+                onClick={() => openViewModal(pkg)}
+              >
+                See Details →
+              </Button>
+            </div>
+          ))}
         </div>
       )}
 

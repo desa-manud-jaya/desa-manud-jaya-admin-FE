@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { TableFilter } from "@/components/dashboard/table-filter";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,11 @@ type PartnerRow = {
   id: string;
   partnerName: string;
   ownerName: string;
+  username: string;
+  email: string;
+  phone: string;
   address: string;
+  ktpNumber: string;
   businessType: string;
   joinDate: string;
   status: "active" | "inactive";
@@ -84,17 +89,139 @@ function mapApprovedVendorToRow(item: ApprovedVendorApiItem): PartnerRow {
   return {
     id: item.userId || "-",
     partnerName: item.vendorName || "-",
-    // endpoint approved vendors belum kirim ownerName,
-    // jadi sementara fallback ke username akun
     ownerName: item.username || "-",
+    username: item.username || "-",
+    email: item.email || "-",
+    phone: item.phone || "-",
     address: item.address || "-",
-    // endpoint belum kirim jenis usaha
+    ktpNumber: item.ktpNumber || "-",
     businessType: "-",
-    // endpoint belum kirim tanggal join / createdAt
     joinDate: "-",
-    // karena endpoint ini khusus approved vendors
     status: "active",
   };
+}
+
+type PartnerDetailModalProps = {
+  open: boolean;
+  partner: PartnerRow | null;
+  onClose: () => void;
+};
+
+function DetailItem({
+  label,
+  value,
+  className = "",
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className={className}>
+      <p className="mb-2 text-sm font-medium text-muted-foreground">{label}</p>
+      <div
+        className={`rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground ${
+          multiline ? "min-h-[120px] whitespace-pre-wrap" : "min-h-[52px] flex items-center"
+        }`}
+      >
+        <span className={label === "ID Mitra" ? "break-all" : "break-words"}>
+          {value || "-"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PartnerDetailModal({
+  open,
+  partner,
+  onClose,
+}: PartnerDetailModalProps) {
+  if (!open || !partner) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div className="flex min-h-screen items-center justify-center p-4 md:p-6">
+        <div
+          className="w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between border-b border-border px-6 py-5">
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">
+                Detail Mitra
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Informasi lengkap data mitra
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              aria-label="Tutup modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="max-h-[75vh] overflow-y-auto px-6 py-6">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <DetailItem label="ID Mitra" value={partner.id} />
+              <DetailItem label="Nama Mitra" value={partner.partnerName} />
+
+              <DetailItem label="Nama Pemilik" value={partner.ownerName} />
+              <DetailItem label="Username" value={partner.username} />
+
+              <DetailItem label="Email" value={partner.email} />
+              <DetailItem label="Nomor Telepon" value={partner.phone} />
+
+              <DetailItem label="Nomor KTP" value={partner.ktpNumber} />
+              <DetailItem label="Jenis Bisnis" value={partner.businessType} />
+
+              <DetailItem label="Bergabung Sejak" value={partner.joinDate} />
+
+              <div>
+                <p className="mb-2 text-sm font-medium text-muted-foreground">
+                  Status
+                </p>
+                <div className="flex min-h-[52px] items-center rounded-xl border border-border bg-muted/30 px-4 py-3">
+                  <Badge
+                    className={
+                      partner.status === "active"
+                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                        : "bg-red-100 text-red-700 hover:bg-red-100"
+                    }
+                  >
+                    {partner.status === "active" ? "Aktif" : "Tidak Aktif"}
+                  </Badge>
+                </div>
+              </div>
+
+              <DetailItem
+                label="Alamat"
+                value={partner.address}
+                className="md:col-span-2"
+                multiline
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end border-t border-border px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Tutup
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PartnerManagePage() {
@@ -108,11 +235,27 @@ export default function PartnerManagePage() {
   const [loadingPartners, setLoadingPartners] = useState(false);
   const [errorPartners, setErrorPartners] = useState<string | null>(null);
 
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedPartner, setSelectedPartner] = useState<PartnerRow | null>(
+    null
+  );
+
   useEffect(() => {
     if (hydrated && !isAuthenticated) {
       router.replace("/login");
     }
   }, [hydrated, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (!detailOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [detailOpen]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -160,6 +303,16 @@ export default function PartnerManagePage() {
     };
   }, [hydrated, loginUser, token]);
 
+  const handleOpenDetail = (partner: PartnerRow) => {
+    setSelectedPartner(partner);
+    setDetailOpen(true);
+  };
+
+  const handleCloseDetail = () => {
+    setDetailOpen(false);
+    setSelectedPartner(null);
+  };
+
   if (!hydrated || !isAuthenticated) {
     return (
       <DashboardLayout>
@@ -182,7 +335,7 @@ export default function PartnerManagePage() {
           ]}
         />
 
-        <div className="rounded-lg border border-border bg-background overflow-hidden shadow-sm">
+        <div className="overflow-hidden rounded-lg border border-border bg-background shadow-sm">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
@@ -240,9 +393,11 @@ export default function PartnerManagePage() {
                     </TableCell>
                     <TableCell>
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
                         className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                        onClick={() => handleOpenDetail(partner)}
                       >
                         Detail
                       </Button>
@@ -263,6 +418,12 @@ export default function PartnerManagePage() {
           </Table>
         </div>
       </div>
+
+      <PartnerDetailModal
+        open={detailOpen}
+        partner={selectedPartner}
+        onClose={handleCloseDetail}
+      />
     </DashboardLayout>
   );
 }

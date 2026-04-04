@@ -6,7 +6,7 @@ import { ApprovalModal } from "@/components/dashboard/approval-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -31,6 +31,11 @@ type PartnerApprovalItem = {
   businessName: string;
   businessType: string;
   requestor: string;
+  username: string;
+  email: string;
+  phone: string;
+  address: string;
+  ktpNumber: string;
   submissionDate: string;
   documentStatus: string;
   status: ApprovalStatus;
@@ -43,6 +48,16 @@ type TourPackageApprovalItem = {
   requestor: string;
   category: string;
   price: string;
+  duration: number;
+  availability: number;
+  itinerary: string[];
+  included: string[];
+  termsAndConditions: string;
+  pricingPolicy: string;
+  cancellationPolicy: string;
+  requirementDocumentUrl: string | null;
+  photoUrl: string | null;
+  moderationNote: string | null;
   submissionDate: string;
   status: ApprovalStatus;
 };
@@ -54,6 +69,18 @@ type DeletionRequestItem = {
   requestor: string;
   submissionDate: string;
   changeType: string;
+  category: string;
+  price: string;
+  duration: number;
+  availability: number;
+  itinerary: string[];
+  included: string[];
+  termsAndConditions: string;
+  pricingPolicy: string;
+  cancellationPolicy: string;
+  deletionRequestReason: string;
+  deletionReviewNote: string;
+  moderationNote: string;
   status: ApprovalStatus;
 };
 
@@ -299,6 +326,324 @@ function getApiErrorMessage(data: unknown, fallbackMessage: string): string {
   return fallbackMessage;
 }
 
+function formatListValue(items: string[]) {
+  if (!items || items.length === 0) return "-";
+  return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
+}
+
+function DetailItem({
+  label,
+  value,
+  className = "",
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className={className}>
+      <p className="mb-2 text-sm font-medium text-muted-foreground">{label}</p>
+      <div
+        className={`rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground ${
+          multiline
+            ? "min-h-[120px] whitespace-pre-wrap"
+            : "flex min-h-[52px] items-center"
+        }`}
+      >
+        <span
+          className={
+            label.toLowerCase().includes("id") ? "break-all" : "break-words"
+          }
+        >
+          {value || "-"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+type DetailModalState =
+  | { section: "partner"; item: PartnerApprovalItem }
+  | { section: "tour"; item: TourPackageApprovalItem }
+  | { section: "deletion"; item: DeletionRequestItem }
+  | null;
+
+function ApprovalDetailModal({
+  detail,
+  onClose,
+}: {
+  detail: DetailModalState;
+  onClose: () => void;
+}) {
+  if (!detail) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div className="flex min-h-screen items-center justify-center p-4 md:p-6">
+        <div
+          className="w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between border-b border-border px-6 py-5">
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">
+                {detail.section === "partner"
+                  ? "Detail Persetujuan Mitra"
+                  : detail.section === "tour"
+                    ? "Detail Persetujuan Paket Wisata"
+                    : "Detail Permintaan Penghapusan"}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Informasi lengkap data yang dipilih
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              aria-label="Tutup modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="max-h-[75vh] overflow-y-auto px-6 py-6">
+            {detail.section === "partner" && (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <DetailItem label="ID" value={detail.item.id} />
+                <DetailItem
+                  label="Nama Bisnis"
+                  value={detail.item.businessName}
+                />
+                <DetailItem label="Pemohon" value={detail.item.requestor} />
+                <DetailItem label="Username" value={detail.item.username} />
+                <DetailItem label="Email" value={detail.item.email} />
+                <DetailItem label="Nomor Telepon" value={detail.item.phone} />
+                <DetailItem label="Nomor KTP" value={detail.item.ktpNumber} />
+                <DetailItem
+                  label="Jenis Bisnis"
+                  value={detail.item.businessType}
+                />
+                <DetailItem
+                  label="Tanggal Pengajuan"
+                  value={detail.item.submissionDate}
+                />
+                <DetailItem
+                  label="Status Dokumen"
+                  value={detail.item.documentStatus}
+                />
+                <div className="md:col-span-2">
+                  <p className="mb-2 text-sm font-medium text-muted-foreground">
+                    Status
+                  </p>
+                  <div className="flex min-h-[52px] items-center rounded-xl border border-border bg-muted/30 px-4 py-3">
+                    <StatusBadge status={detail.item.status} />
+                  </div>
+                </div>
+                <DetailItem
+                  label="Alamat"
+                  value={detail.item.address}
+                  className="md:col-span-2"
+                  multiline
+                />
+              </div>
+            )}
+
+            {detail.section === "tour" && (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <DetailItem label="ID" value={detail.item.id} />
+                <DetailItem
+                  label="Nama Paket"
+                  value={detail.item.packageName}
+                />
+                <DetailItem
+                  label="Nama Mitra"
+                  value={detail.item.partnerName}
+                />
+                <DetailItem label="Pemohon" value={detail.item.requestor} />
+                <DetailItem label="Kategori" value={detail.item.category} />
+                <DetailItem label="Harga" value={detail.item.price} />
+                <DetailItem
+                  label="Durasi"
+                  value={String(detail.item.duration)}
+                />
+                <DetailItem
+                  label="Ketersediaan"
+                  value={String(detail.item.availability)}
+                />
+                <DetailItem
+                  label="Tanggal Pengajuan"
+                  value={detail.item.submissionDate}
+                />
+                <div>
+                  <p className="mb-2 text-sm font-medium text-muted-foreground">
+                    Status
+                  </p>
+                  <div className="flex min-h-[52px] items-center rounded-xl border border-border bg-muted/30 px-4 py-3">
+                    <StatusBadge status={detail.item.status} />
+                  </div>
+                </div>
+
+                <DetailItem
+                  label="Itinerary"
+                  value={formatListValue(detail.item.itinerary)}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Included"
+                  value={formatListValue(detail.item.included)}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Terms and Conditions"
+                  value={detail.item.termsAndConditions}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Pricing Policy"
+                  value={detail.item.pricingPolicy}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Cancellation Policy"
+                  value={detail.item.cancellationPolicy}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Requirement Document URL"
+                  value={detail.item.requirementDocumentUrl ?? "-"}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Photo URL"
+                  value={detail.item.photoUrl ?? "-"}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Moderation Note"
+                  value={detail.item.moderationNote ?? "-"}
+                  className="md:col-span-2"
+                  multiline
+                />
+              </div>
+            )}
+
+            {detail.section === "deletion" && (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <DetailItem label="ID" value={detail.item.id} />
+                <DetailItem
+                  label="Nama Paket"
+                  value={detail.item.packageName}
+                />
+                <DetailItem
+                  label="Nama Bisnis"
+                  value={detail.item.businessName}
+                />
+                <DetailItem label="Pemohon" value={detail.item.requestor} />
+                <DetailItem label="Kategori" value={detail.item.category} />
+                <DetailItem label="Harga" value={detail.item.price} />
+                <DetailItem
+                  label="Durasi"
+                  value={String(detail.item.duration)}
+                />
+                <DetailItem
+                  label="Ketersediaan"
+                  value={String(detail.item.availability)}
+                />
+                <DetailItem
+                  label="Tanggal Pengajuan"
+                  value={detail.item.submissionDate}
+                />
+                <DetailItem
+                  label="Jenis Perubahan"
+                  value={detail.item.changeType}
+                />
+
+                <div className="md:col-span-2">
+                  <p className="mb-2 text-sm font-medium text-muted-foreground">
+                    Status
+                  </p>
+                  <div className="flex min-h-[52px] items-center rounded-xl border border-border bg-muted/30 px-4 py-3">
+                    <StatusBadge status={detail.item.status} />
+                  </div>
+                </div>
+
+                <DetailItem
+                  label="Alasan Penghapusan"
+                  value={detail.item.deletionRequestReason}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Catatan Review"
+                  value={detail.item.deletionReviewNote}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Moderation Note"
+                  value={detail.item.moderationNote}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Itinerary"
+                  value={formatListValue(detail.item.itinerary)}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Included"
+                  value={formatListValue(detail.item.included)}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Terms and Conditions"
+                  value={detail.item.termsAndConditions}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Pricing Policy"
+                  value={detail.item.pricingPolicy}
+                  className="md:col-span-2"
+                  multiline
+                />
+                <DetailItem
+                  label="Cancellation Policy"
+                  value={detail.item.cancellationPolicy}
+                  className="md:col-span-2"
+                  multiline
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end border-t border-border px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Tutup
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 async function approvePendingTourPackage(
   token: string,
   id: string,
@@ -470,8 +815,14 @@ async function rejectDeletionRequest(
   return data;
 }
 
+function formatShortId(value: string) {
+  if (!value) return "-";
+  return value.slice(0, 6);
+}
+
 export default function ApprovalCenterPage() {
   const dispatch = useAppDispatch();
+  const [detailItem, setDetailItem] = useState<DetailModalState>(null);
 
   const { loginUser, sessionPassword, token } = useAppSelector(
     (state) => state.auth,
@@ -519,6 +870,13 @@ export default function ApprovalCenterPage() {
     section: ApprovalSection;
     id: string;
   } | null>(null);
+  const openDetailModal = (detail: Exclude<DetailModalState, null>) => {
+    setDetailItem(detail);
+  };
+
+  const closeDetailModal = () => {
+    setDetailItem(null);
+  };
 
   useEffect(() => {
     if (loginUser?.role === "ADMIN") {
@@ -553,6 +911,16 @@ export default function ApprovalCenterPage() {
             requestor: "-",
             category: formatCategoryLabel(item.category),
             price: formatCurrency(item.price),
+            duration: item.duration,
+            availability: item.availability,
+            itinerary: item.itinerary ?? [],
+            included: item.included ?? [],
+            termsAndConditions: item.termsAndConditions || "-",
+            pricingPolicy: item.pricingPolicy || "-",
+            cancellationPolicy: item.cancellationPolicy || "-",
+            requirementDocumentUrl: item.requirementDocumentUrl,
+            photoUrl: item.photoUrl,
+            moderationNote: item.moderationNote,
             submissionDate: formatSubmissionDate(item.createdAt),
             status: mapApprovalStatus(item.approvalStatus),
           }),
@@ -585,6 +953,17 @@ export default function ApprovalCenterPage() {
   }, [loginUser, token]);
 
   useEffect(() => {
+    if (!detailItem) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [detailItem]);
+
+  useEffect(() => {
     if (loginUser?.role !== "ADMIN" || !token) {
       setDeletionRequests([]);
       setErrorDeletionRequests(null);
@@ -608,6 +987,18 @@ export default function ApprovalCenterPage() {
             requestor: "-",
             submissionDate: formatDeletionDate(item.deletionRequestedAt),
             changeType: "HAPUS",
+            category: formatCategoryLabel(item.category),
+            price: formatCurrency(item.price),
+            duration: item.duration,
+            availability: item.availability,
+            itinerary: item.itinerary ?? [],
+            included: item.included ?? [],
+            termsAndConditions: item.termsAndConditions || "-",
+            pricingPolicy: item.pricingPolicy || "-",
+            cancellationPolicy: item.cancellationPolicy || "-",
+            deletionRequestReason: item.deletionRequestReason || "-",
+            deletionReviewNote: item.deletionReviewNote || "-",
+            moderationNote: item.moderationNote || "-",
             status: mapDeletionStatus(item.deletionRequestStatus),
           }),
         );
@@ -644,6 +1035,11 @@ export default function ApprovalCenterPage() {
       businessName: item.vendorName || "-",
       businessType: "-",
       requestor: item.username || "-",
+      username: item.username || "-",
+      email: item.email || "-",
+      phone: item.phone || "-",
+      address: item.address || "-",
+      ktpNumber: item.ktpNumber || "-",
       submissionDate: "-",
       documentStatus: "All uploaded",
       status: partnerStatusMap[item.userId] ?? "pending",
@@ -924,7 +1320,7 @@ export default function ApprovalCenterPage() {
                 ) : filteredPartnerApprovals.length > 0 ? (
                   filteredPartnerApprovals.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.id}</TableCell>
+                      <TableCell className="font-medium">{formatShortId(item.id)}..</TableCell>
                       <TableCell>{item.businessName}</TableCell>
                       <TableCell>{item.businessType}</TableCell>
                       <TableCell>{item.requestor}</TableCell>
@@ -944,6 +1340,9 @@ export default function ApprovalCenterPage() {
                             variant="outline"
                             size="sm"
                             className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                            onClick={() =>
+                              openDetailModal({ section: "partner", item })
+                            }
                           >
                             Detail
                           </Button>
@@ -1035,7 +1434,7 @@ export default function ApprovalCenterPage() {
                 ) : tourPackageApprovals.length > 0 ? (
                   tourPackageApprovals.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.id}</TableCell>
+                      <TableCell className="font-medium">{formatShortId(item.id)}..</TableCell>
                       <TableCell>{item.packageName}</TableCell>
                       <TableCell>{item.partnerName}</TableCell>
                       <TableCell>{item.requestor}</TableCell>
@@ -1051,6 +1450,9 @@ export default function ApprovalCenterPage() {
                             variant="outline"
                             size="sm"
                             className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                            onClick={() =>
+                              openDetailModal({ section: "tour", item })
+                            }
                           >
                             Detail
                           </Button>
@@ -1143,7 +1545,7 @@ export default function ApprovalCenterPage() {
                 ) : deletionRequests.length > 0 ? (
                   deletionRequests.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.id}</TableCell>
+                      <TableCell className="font-medium">{formatShortId(item.id)}..</TableCell>
                       <TableCell>{item.packageName}</TableCell>
                       <TableCell>{item.businessName}</TableCell>
                       <TableCell>{item.requestor}</TableCell>
@@ -1162,6 +1564,9 @@ export default function ApprovalCenterPage() {
                             variant="outline"
                             size="sm"
                             className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                            onClick={() =>
+                              openDetailModal({ section: "deletion", item })
+                            }
                           >
                             Detail
                           </Button>
@@ -1232,6 +1637,8 @@ export default function ApprovalCenterPage() {
         type={modalType}
         mode="success"
       />
+
+      <ApprovalDetailModal detail={detailItem} onClose={closeDetailModal} />
     </DashboardLayout>
   );
 }
