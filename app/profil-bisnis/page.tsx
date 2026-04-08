@@ -1,95 +1,256 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, Pencil } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import {
   PARTNER_BUSINESS_TYPE_OPTIONS,
-  partnerBusinessProfileMock,
   type PartnerBusinessProfile,
 } from "@/lib/partner-mock";
+import {
+  mapBusinessTypeToApi,
+  updateVendorProfile,
+} from "@/lib/services/auth-service";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { refreshVendorProfile } from "@/store/slices/auth-slice";
+import { useRouter } from "next/navigation";
 
-type BusinessProfileErrors = Partial<
-  Record<keyof PartnerBusinessProfile, string>
->;
+type BusinessProfileForm = Omit<PartnerBusinessProfile, "statusAccount"> & {
+  statusAccount: string;
+};
+
+type BusinessProfileErrors = Partial<Record<keyof BusinessProfileForm, string>>;
 
 const inputClassName =
   "h-12 w-full rounded-xl border border-border bg-muted/40 px-4 text-base outline-none focus:border-blue-400";
 
+const emptyForm: BusinessProfileForm = {
+  businessName: "",
+  ownerName: "",
+  nik: "",
+  businessType: "",
+  email: "",
+  nib: "",
+  bankAccountName: "",
+  phone: "",
+  sku: "",
+  bankAccountNumber: "",
+  businessAddress: "",
+  siup: "",
+  sustainabilityCertification: "",
+  statusAccount: "",
+  logoUrl: "",
+};
+
+function mapBusinessTypeFromApi(value?: string | null) {
+  const mapping: Record<string, string> = {
+    AKOMODASI: "Accommodation (Homestay / Lodge)",
+    TOURIST_ATTRACTION: "Tourist Attraction",
+    CULINARY: "Food & Beverage / Culinary",
+    WORKSHOP: "Local Experience / Workshop",
+    SOUVENIR: "Local Product / Souvenir - UMKM",
+  };
+
+  if (!value) return "";
+  return mapping[value] ?? value;
+}
+
+function formatStatusLabel(value?: string | null) {
+  if (!value) return "";
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export default function BusinessProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
-  const [form, setForm] = useState<PartnerBusinessProfile>(partnerBusinessProfileMock);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<BusinessProfileForm>(emptyForm);
   const [errors, setErrors] = useState<BusinessProfileErrors>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const { token, vendorData, hydrated } = useAppSelector((state) => state.auth);
+
+  const dispatch = useAppDispatch();
+const router = useRouter();
+
+  useEffect(() => {
+    console.log("BUSINESS PROFILE - REDUX vendorData:", vendorData);
+    console.log("BUSINESS PROFILE - REDUX token:", token);
+
+    if (!vendorData) return;
+
+    const mappedForm: BusinessProfileForm = {
+      businessName: vendorData.vendorProfile?.vendorName ?? "",
+      ownerName: vendorData.vendorProfile?.ownerName ?? "",
+      nik:
+        vendorData.vendorProfile?.nik ??
+        vendorData.vendorProfile?.ktpNumber ??
+        "",
+      businessType: mapBusinessTypeFromApi(
+        vendorData.vendorProfile?.jenisUsaha,
+    ),
+      email: vendorData.email ?? "",
+      nib: vendorData.vendorProfile?.nib ?? "",
+      bankAccountName: vendorData.vendorProfile?.bankAccountName ?? "",
+      phone: vendorData.vendorProfile?.phone ?? "",
+      sku: vendorData.vendorProfile?.sku ?? "",
+      bankAccountNumber: vendorData.vendorProfile?.bankAccountNumber ?? "",
+      businessAddress: vendorData.vendorProfile?.address ?? "",
+      siup: vendorData.vendorProfile?.siup ?? "",
+      sustainabilityCertification:
+        vendorData.vendorProfile?.sustainabilityCertification ?? "",
+      statusAccount: formatStatusLabel(
+        vendorData.status ?? vendorData.vendorProfile?.approvalStatus ?? "",
+      ),
+      logoUrl: "",
+    };
+
+    console.log("BUSINESS PROFILE - MAPPED FORM:", mappedForm);
+
+    setForm(mappedForm);
+  }, [vendorData, token]);
 
   const validate = () => {
     const nextErrors: BusinessProfileErrors = {};
 
-    if (!form.businessName.trim()) nextErrors.businessName = "Business name wajib diisi.";
-    if (!form.ownerName.trim()) nextErrors.ownerName = "Owner name wajib diisi.";
-    if (!/^\d{16}$/.test(form.nik.trim())) nextErrors.nik = "Masukkan NIK 16 digit yang valid.";
-    if (!form.businessType.trim()) nextErrors.businessType = "Business type wajib dipilih.";
-    if (!form.email.trim()) nextErrors.email = "Email wajib diisi.";
-    if (!form.nib.trim()) nextErrors.nib = "Masukkan NIB.";
-    if (!form.bankAccountName.trim()) nextErrors.bankAccountName = "Nama rekening wajib diisi.";
-    if (!form.phone.trim()) nextErrors.phone = "Nomor telepon wajib diisi.";
-    if (!form.sku.trim()) nextErrors.sku = "Masukkan SKU.";
-    if (!form.bankAccountNumber.trim()) nextErrors.bankAccountNumber = "Nomor rekening wajib diisi.";
-    if (!form.businessAddress.trim()) nextErrors.businessAddress = "Alamat usaha wajib diisi.";
-    if (!form.siup.trim()) nextErrors.siup = "Masukkan SIUP.";
+    if (!form.businessName.trim()) {
+      nextErrors.businessName = "Business name wajib diisi.";
+    }
+
+    if (!form.ownerName.trim()) {
+      nextErrors.ownerName = "Owner name wajib diisi.";
+    }
+
+    if (!/^\d{16}$/.test(form.nik.trim())) {
+      nextErrors.nik = "Masukkan NIK 16 digit yang valid.";
+    }
+
+    if (!form.businessType.trim()) {
+      nextErrors.businessType = "Business type wajib dipilih.";
+    }
+
+    if (!form.email.trim()) {
+      nextErrors.email = "Email wajib diisi.";
+    }
+
+    if (!form.nib.trim()) {
+      nextErrors.nib = "Masukkan NIB.";
+    }
+
+    if (!form.bankAccountName.trim()) {
+      nextErrors.bankAccountName = "Nama rekening wajib diisi.";
+    }
+
+    if (!form.phone.trim()) {
+      nextErrors.phone = "Nomor telepon wajib diisi.";
+    }
+
+    if (!form.sku.trim()) {
+      nextErrors.sku = "Masukkan SKU.";
+    }
+
+    if (!form.bankAccountNumber.trim()) {
+      nextErrors.bankAccountNumber = "Nomor rekening wajib diisi.";
+    }
+
+    if (!form.businessAddress.trim()) {
+      nextErrors.businessAddress = "Alamat usaha wajib diisi.";
+    }
+
+    if (!form.siup.trim()) {
+      nextErrors.siup = "Masukkan SIUP.";
+    }
 
     return nextErrors;
   };
 
-  const handleChange = (
-    field: keyof PartnerBusinessProfile,
-    value: string
-  ) => {
+  const handleChange = (field: keyof BusinessProfileForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   };
 
-  const handleSave = () => {
-    const nextErrors = validate();
+  const handleSave = async () => {
+  const nextErrors = validate();
 
-    if (Object.keys(nextErrors).length > 0) {
-      setErrors(nextErrors);
+  if (Object.keys(nextErrors).length > 0) {
+    console.log("BUSINESS PROFILE VALIDATION ERRORS:", nextErrors);
+    setErrors(nextErrors);
+    return;
+  }
+
+  if (!token) {
+    console.log("UPDATE VENDOR PROFILE FAILED: token tidak ditemukan");
+    alert("Token login tidak ditemukan. Silakan login ulang.");
+    return;
+  }
+
+  const payload = {
+    namaUsaha: form.businessName.trim(),
+    namaOwner: form.ownerName.trim(),
+    bankAccountName: form.bankAccountName.trim(),
+    bankAccountNumber: form.bankAccountNumber.trim(),
+    jenisUsaha: mapBusinessTypeToApi(form.businessType),
+    email: form.email.trim(),
+    phone: form.phone.trim(),
+    address: form.businessAddress.trim(),
+    nik: form.nik.trim(),
+    nib: form.nib.trim(),
+    sku: form.sku.trim(),
+    siup: form.siup.trim(),
+  };
+
+  console.log("BUSINESS PROFILE FORM VALUES:", form);
+  console.log("BUSINESS PROFILE UPDATE PAYLOAD:", payload);
+  console.log("BUSINESS PROFILE TOKEN:", token);
+
+  try {
+    setSaving(true);
+
+    const result = await updateVendorProfile(token, payload);
+
+    console.log("UPDATE VENDOR PROFILE SUCCESS:", result);
+
+    const refreshResult = await dispatch(refreshVendorProfile());
+
+    console.log("REFRESH VENDOR PROFILE RESULT ACTION:", refreshResult);
+
+    if (refreshVendorProfile.rejected.match(refreshResult)) {
+      alert(
+        typeof refreshResult.payload === "string"
+          ? refreshResult.payload
+          : "Profile berhasil disimpan, tapi gagal refresh data vendor"
+      );
       return;
     }
 
-    const payload = {
-      businessName: form.businessName,
-      ownerName: form.ownerName,
-      nik: form.nik,
-      businessType: form.businessType,
-      email: form.email,
-      nib: form.nib,
-      bankAccountName: form.bankAccountName,
-      phone: form.phone,
-      sku: form.sku,
-      bankAccountNumber: form.bankAccountNumber,
-      businessAddress: form.businessAddress,
-      siup: form.siup,
-      sustainabilityCertification: form.sustainabilityCertification,
-      statusAccount: form.statusAccount,
-      logoUrl: form.logoUrl,
-    };
-
-    console.log("PARTNER BUSINESS PROFILE FORM VALUES:", form);
-    console.log("PARTNER BUSINESS PROFILE API PAYLOAD:", payload);
-
-    // TODO:
-    // Ganti ke API call saat backend sudah siap.
-    // await fetch("/api/partner/business-profile", { method: "POST", body: JSON.stringify(payload) })
-
-    setIsEditing(false);
     setErrors({});
-  };
+    setIsEditing(false);
 
-  const renderError = (field: keyof PartnerBusinessProfile) =>
+    router.replace("/dashboard");
+    router.refresh();
+  } catch (error) {
+    console.error("UPDATE VENDOR PROFILE ERROR:", error);
+    alert(error instanceof Error ? error.message : "Gagal update profile");
+  } finally {
+    setSaving(false);
+  }
+};
+
+  const renderError = (field: keyof BusinessProfileForm) =>
     errors[field] ? (
       <p className="mt-2 text-sm text-red-500">{errors[field]}</p>
     ) : null;
+
+  if (!hydrated) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[300px]" />
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -139,7 +300,9 @@ export default function BusinessProfilePage() {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <div>
-              <label className="mb-2 block text-sm font-medium">Business Name*</label>
+              <label className="mb-2 block text-sm font-medium">
+                Business Name*
+              </label>
               <input
                 value={form.businessName}
                 disabled={!isEditing}
@@ -150,7 +313,9 @@ export default function BusinessProfilePage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium">Owner Name*</label>
+              <label className="mb-2 block text-sm font-medium">
+                Owner Name*
+              </label>
               <input
                 value={form.ownerName}
                 disabled={!isEditing}
@@ -173,7 +338,9 @@ export default function BusinessProfilePage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium">Business Type*</label>
+              <label className="mb-2 block text-sm font-medium">
+                Business Type*
+              </label>
               <select
                 value={form.businessType}
                 disabled={!isEditing}
@@ -214,11 +381,15 @@ export default function BusinessProfilePage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium">Bank Account Name*</label>
+              <label className="mb-2 block text-sm font-medium">
+                Bank Account Name*
+              </label>
               <input
                 value={form.bankAccountName}
                 disabled={!isEditing}
-                onChange={(e) => handleChange("bankAccountName", e.target.value)}
+                onChange={(e) =>
+                  handleChange("bankAccountName", e.target.value)
+                }
                 className={inputClassName}
               />
               {renderError("bankAccountName")}
@@ -248,22 +419,30 @@ export default function BusinessProfilePage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium">Bank Account Number*</label>
+              <label className="mb-2 block text-sm font-medium">
+                Bank Account Number*
+              </label>
               <input
                 value={form.bankAccountNumber}
                 disabled={!isEditing}
-                onChange={(e) => handleChange("bankAccountNumber", e.target.value)}
+                onChange={(e) =>
+                  handleChange("bankAccountNumber", e.target.value)
+                }
                 className={inputClassName}
               />
               {renderError("bankAccountNumber")}
             </div>
 
             <div className="lg:row-span-2">
-              <label className="mb-2 block text-sm font-medium">Business Address*</label>
+              <label className="mb-2 block text-sm font-medium">
+                Business Address*
+              </label>
               <textarea
                 value={form.businessAddress}
                 disabled={!isEditing}
-                onChange={(e) => handleChange("businessAddress", e.target.value)}
+                onChange={(e) =>
+                  handleChange("businessAddress", e.target.value)
+                }
                 className="min-h-[130px] w-full rounded-xl border border-border bg-muted/40 p-4 text-base outline-none focus:border-blue-400"
               />
               {renderError("businessAddress")}
@@ -297,7 +476,9 @@ export default function BusinessProfilePage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium">Status Account</label>
+              <label className="mb-2 block text-sm font-medium">
+                Status Account
+              </label>
               <input
                 value={form.statusAccount}
                 disabled
@@ -311,9 +492,10 @@ export default function BusinessProfilePage() {
               <button
                 type="button"
                 onClick={handleSave}
-                className="rounded-xl bg-blue-500 px-10 py-3 text-lg font-medium text-white shadow-sm transition hover:bg-blue-600"
+                disabled={saving}
+                className="rounded-xl bg-blue-500 px-10 py-3 text-lg font-medium text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Save
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           )}

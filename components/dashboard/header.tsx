@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Bell, ChevronDown, Key, LogOut, Search, User } from "lucide-react";
-import type { AuthSession } from "@/lib/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,8 +10,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import { useAppSelector } from "@/store/hooks";
 
 const notifications = [
   {
@@ -34,19 +38,53 @@ const notifications = [
 ];
 
 interface HeaderProps {
-  user?: AuthSession | null;
+  user?: unknown;
   onLogoutClick?: () => void;
 }
 
-export function Header({ user, onLogoutClick }: HeaderProps) {
+function mapRoleLabel(role?: string | null) {
+  switch (role) {
+    case "VENDOR":
+      return "Vendor";
+    case "ADMIN":
+      return "Admin";
+    default:
+      return role ? role.charAt(0).toUpperCase() + role.slice(1).toLowerCase() : "Pengguna";
+  }
+}
+
+export function Header({ onLogoutClick }: HeaderProps) {
   const [notificationOpen, setNotificationOpen] = useState(false);
 
-  const displayName = user?.name ?? "Pengguna";
-  const displayRole = user?.role === "partner" ? "Partners" : "Admin";
+  const { loginUser, vendorData, token, isAuthenticated } = useAppSelector(
+    (state) => state.auth
+  );
+
+  const displayName =
+    vendorData?.vendorProfile?.ownerName?.trim() ||
+    vendorData?.vendorProfile?.vendorName?.trim() ||
+    loginUser?.username?.trim() ||
+    "Pengguna";
+
+  const rawRole = loginUser?.role ?? vendorData?.role ?? null;
+  const businessId = vendorData?.vendorProfile?.businessId ?? null;
+  const displayRole = mapRoleLabel(rawRole);
+
+  console.log("HEADER REDUX loginUser:", loginUser);
+  console.log("HEADER REDUX vendorData:", vendorData);
+  console.log("HEADER REDUX token:", token);
+  console.log("HEADER REDUX isAuthenticated:", isAuthenticated);
+  console.log("HEADER DISPLAY NAME:", displayName);
+  console.log("HEADER DISPLAY ROLE:", displayRole);
 
   const initials = useMemo(() => {
     const parts = displayName.trim().split(" ").filter(Boolean);
-    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "US";
+    return (
+      parts
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase())
+        .join("") || "US"
+    );
   }, [displayName]);
 
   return (
@@ -80,7 +118,9 @@ export function Header({ user, onLogoutClick }: HeaderProps) {
                 >
                   <div
                     className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                      notification.icon === "partner" ? "bg-emerald-100" : "bg-amber-100"
+                      notification.icon === "partner"
+                        ? "bg-emerald-100"
+                        : "bg-amber-100"
                     }`}
                   >
                     {notification.icon === "partner" ? (
@@ -92,7 +132,9 @@ export function Header({ user, onLogoutClick }: HeaderProps) {
 
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold">{notification.title}</h4>
+                      <h4 className="text-sm font-semibold">
+                        {notification.title}
+                      </h4>
                       <span className="text-xs text-muted-foreground">
                         {notification.time}
                       </span>
@@ -117,13 +159,16 @@ export function Header({ user, onLogoutClick }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-3">
               <Avatar className="h-9 w-9">
-                <AvatarImage src="/placeholder.svg?height=36&width=36" alt={displayName} />
+                <AvatarImage
+                  src="/placeholder.svg?height=36&width=36"
+                  alt={displayName}
+                />
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
 
               <div className="text-left">
                 <p className="text-sm font-medium">{displayName}</p>
-                <p className="text-xs capitalize text-muted-foreground">{displayRole}</p>
+                <p className="text-xs text-muted-foreground">{displayRole}</p>
               </div>
 
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -141,7 +186,10 @@ export function Header({ user, onLogoutClick }: HeaderProps) {
               Ubah Kata Sandi
             </DropdownMenuItem>
 
-            <DropdownMenuItem onClick={onLogoutClick} className="text-red-500">
+            <DropdownMenuItem
+              onClick={onLogoutClick}
+              className="text-red-500"
+            >
               <LogOut className="mr-2 h-4 w-4" />
               Keluar
             </DropdownMenuItem>

@@ -120,7 +120,12 @@ export function setAuthSessionCookie(session: AuthSession) {
   if (typeof document === "undefined") return;
 
   const encoded = encodeURIComponent(encodeSession(session));
-  document.cookie = `${AUTH_COOKIE_NAME}=${encoded}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; samesite=lax`;
+  // document.cookie = `${AUTH_COOKIE_NAME}=${encoded}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; samesite=lax`;
+  const isDev = process.env.NODE_ENV === "development";
+
+document.cookie = isDev
+  ? `${AUTH_COOKIE_NAME}=${encoded}; path=/; samesite=lax`
+  : `${AUTH_COOKIE_NAME}=${encoded}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; samesite=lax`;
 }
 
 export function clearAuthSessionCookie() {

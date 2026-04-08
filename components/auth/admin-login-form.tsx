@@ -1,63 +1,68 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  loginWithDummy,
-  setAuthSessionCookie,
-  type LoginPayload,
-  type UserRole,
-} from "@/lib/auth";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { loginAndFetchUser} from "@/store/slices/auth-slice";
+
+type LoginFormState = {
+  username: string;
+  password: string;
+};
 
 type FormErrors = {
-  email?: string;
+  username?: string;
   password?: string;
-  role?: string;
   general?: string;
 };
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export function AdminLoginForm() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
 
-  const [form, setForm] = useState<LoginPayload>({
-    email: "",
+  const authState = useAppSelector((state) => state.auth);
+  const { loading } = authState;
+
+  const [form, setForm] = useState<LoginFormState>({
+    username: "",
     password: "",
-    role: "admin",
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    console.log("REDUX AUTH STATE UPDATED:", authState);
+    console.log("REDUX STORED token:", authState.token);
+    console.log("REDUX STORED isAuthenticated:", authState.isAuthenticated);
+    console.log("REDUX STORED loginUser:", authState.loginUser);
+    console.log("REDUX STORED vendorData:", authState.vendorData);
+    console.log("REDUX STORED loading:", authState.loading);
+    console.log("REDUX STORED error:", authState.error);
+    console.log("REDUX STORED hydrated:", authState.hydrated);
+  }, [authState]);
 
   const validate = () => {
     const nextErrors: FormErrors = {};
 
-    if (!form.email.trim()) {
-      nextErrors.email = "Email wajib diisi.";
-    } else if (!emailRegex.test(form.email)) {
-      nextErrors.email = "Format email tidak valid.";
+    if (!form.username.trim()) {
+      nextErrors.username = "Username wajib diisi.";
     }
 
     if (!form.password) {
       nextErrors.password = "Password wajib diisi.";
     }
 
-    if (!form.role) {
-      nextErrors.role = "Role wajib dipilih.";
-    }
-
     return nextErrors;
   };
 
-  const handleChange = (field: keyof LoginPayload, value: string) => {
+  const handleChange = (field: keyof LoginFormState, value: string) => {
     setForm((prev) => ({
       ...prev,
-      [field]: field === "role" ? (value as UserRole) : value,
+      [field]: value,
     }));
 
     setErrors((prev) => ({
@@ -76,45 +81,55 @@ export function AdminLoginForm() {
       return;
     }
 
-    setSubmitting(true);
+    console.log("LOGIN FORM PAYLOAD:", {
+      username: form.username,
+      password: form.password,
+    });
 
     try {
-      console.log("LOGIN API PAYLOAD:", form);
+      const resultAction = await dispatch(
+        loginAndFetchUser({
+          username: form.username,
+          password: form.password,
+        })
+      );
 
-      // TODO:
-      // Saat API sudah tersedia, ganti blok dummy di bawah dengan fetch ke endpoint login.
-      // Contoh:
-      // const response = await fetch("/api/auth/login", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify(form),
-      // });
-      // const result = await response.json();
-      // lalu cookie idealnya diset dari backend sebagai httpOnly cookie.
+      console.log("DISPATCH RESULT ACTION:", resultAction);
 
-      const session = loginWithDummy(form);
+      if (loginAndFetchUser.fulfilled.match(resultAction)) {
+        console.log("LOGIN + GET /vendor SUCCESS");
+        console.log("FULFILLED PAYLOAD:", resultAction.payload);
+        console.log("TOKEN FROM THUNK:", resultAction.payload.token);
+        console.log("LOGIN USER FROM THUNK:", resultAction.payload.loginUser);
+        console.log("VENDOR DATA FROM THUNK:", resultAction.payload.vendorData);
 
-      if (!session) {
+        router.replace("/dashboard");
+        router.refresh();
+      } else {
+        console.log("LOGIN + GET /vendor FAILED");
+        console.log("REJECTED PAYLOAD:", resultAction.payload);
+        console.log("REJECTED ERROR:", resultAction.error);
+
         setErrors({
-          general: "Email, password, atau role tidak cocok.",
+          general:
+            typeof resultAction.payload === "string"
+              ? resultAction.payload
+              : "Login gagal",
         });
-        return;
       }
+    } catch (error) {
+      console.error("HANDLE SUBMIT ERROR:", error);
 
-      console.log("LOGIN SESSION:", session);
-
-      setAuthSessionCookie(session);
-      router.replace("/");
-      router.refresh();
-    } finally {
-      setSubmitting(false);
+      setErrors({
+        general: "Terjadi kesalahan saat proses login.",
+      });
     }
   };
 
   return (
     <div className="w-full max-w-md rounded-3xl border border-border bg-background p-8 shadow-sm">
       <div className="mb-8">
-        <p className="text-sm font-medium text-emerald-500">Portal Admin</p>
+        <p className="text-sm font-medium text-sky-500">Portal Admin</p>
         <h1 className="mt-2 text-3xl font-bold text-foreground">
           Masuk ke dashboard
         </h1>
@@ -127,19 +142,19 @@ export function AdminLoginForm() {
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
         <div>
           <label className="mb-2 block text-sm font-medium text-foreground">
-            Email
+            Username
           </label>
           <Input
-            type="email"
-            placeholder="admin@manudjaya.com"
-            value={form.email}
-            onChange={(e) => handleChange("email", e.target.value)}
+            type="text"
+            placeholder="Masukkan username"
+            value={form.username}
+            onChange={(e) => handleChange("username", e.target.value)}
             className={
-              errors.email ? "border-red-500 focus-visible:ring-red-200" : ""
+              errors.username ? "border-red-500 focus-visible:ring-red-200" : ""
             }
           />
-          {errors.email && (
-            <p className="mt-2 text-sm text-red-500">{errors.email}</p>
+          {errors.username && (
+            <p className="mt-2 text-sm text-red-500">{errors.username}</p>
           )}
         </div>
 
@@ -179,33 +194,18 @@ export function AdminLoginForm() {
           )}
         </div>
 
-        <div>
-          <label className="mb-2 block text-sm font-medium text-foreground">
-            Masuk sebagai
-          </label>
-          <select
-            value={form.role}
-            onChange={(e) => handleChange("role", e.target.value)}
-            className={`h-10 w-full rounded-md border bg-background px-3 text-sm outline-none ${
-              errors.role ? "border-red-500" : "border-input"
-            }`}
-          >
-            <option value="admin">Admin</option>
-            <option value="partner">Partner</option>
-          </select>
-          {errors.role && (
-            <p className="mt-2 text-sm text-red-500">{errors.role}</p>
-          )}
-        </div>
-
         {errors.general && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
             {errors.general}
           </div>
         )}
 
-        <Button type="submit" className="h-11 w-full" disabled={submitting}>
-          {submitting ? (
+        <Button
+          type="submit"
+          className="h-11 w-full bg-sky-600"
+          disabled={loading}
+        >
+          {loading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Memproses...
@@ -215,13 +215,6 @@ export function AdminLoginForm() {
           )}
         </Button>
       </form>
-
-      <div className="mt-6 rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Dummy login</p>
-        <p className="mt-2">Admin: admin@manudjaya.com / Admin123!</p>
-        <p>Partner Draft: partner@manudjaya.com / Partner123!</p>
-        <p>Partner Activated: bastian@manudjaya.com / Bastian123!</p>
-      </div>
     </div>
   );
 }
