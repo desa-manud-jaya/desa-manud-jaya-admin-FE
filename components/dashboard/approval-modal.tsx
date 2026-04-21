@@ -17,7 +17,12 @@ interface ApprovalModalProps {
   onOpenChange: (open: boolean) => void;
   type: "approve" | "reject";
   mode?: "confirm" | "success";
-  onConfirm?: (password: string, reason: string) => void | Promise<void>;
+  reasonLabel?: string;
+  requireReason?: boolean;
+  onConfirm?: (
+    password: string,
+    reason: string,
+  ) => void | boolean | Promise<void | boolean>;
 }
 
 export function ApprovalModal({
@@ -25,6 +30,8 @@ export function ApprovalModal({
   onOpenChange,
   type,
   mode = "confirm",
+  reasonLabel = "Alasan",
+  requireReason = false,
   onConfirm,
 }: ApprovalModalProps) {
   const [password, setPassword] = useState("");
@@ -64,8 +71,8 @@ export function ApprovalModal({
       nextErrors.password = "Kata sandi wajib diisi.";
     }
 
-    if (!isApprove && !reason.trim()) {
-      nextErrors.reason = "Alasan penolakan wajib diisi.";
+    if ((requireReason || !isApprove) && !reason.trim()) {
+      nextErrors.reason = `${reasonLabel} wajib diisi.`;
     }
 
     if (Object.keys(nextErrors).length > 0) {
@@ -75,7 +82,12 @@ export function ApprovalModal({
 
     try {
       setSubmitting(true);
-      await onConfirm(password, reason);
+      const shouldClose = await onConfirm(password, reason);
+
+      if (shouldClose === false) {
+        return;
+      }
+
       handleClose();
     } finally {
       setSubmitting(false);
@@ -129,15 +141,17 @@ export function ApprovalModal({
 
             <div className="flex items-start gap-4">
               <Label htmlFor="reason" className="w-20 pt-3 text-right">
-                Alasan:
+                {reasonLabel}:
               </Label>
               <div className="flex-1">
                 <Input
                   id="reason"
                   placeholder={
-                    isApprove
-                      ? "Masukkan alasan (opsional)"
-                      : "Masukkan alasan penolakan"
+                    requireReason
+                      ? `Masukkan ${reasonLabel.toLowerCase()}`
+                      : isApprove
+                        ? "Masukkan alasan (opsional)"
+                        : "Masukkan alasan penolakan"
                   }
                   value={reason}
                   onChange={(e) => {

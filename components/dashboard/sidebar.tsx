@@ -8,6 +8,7 @@ import { useAppSelector } from "@/store/hooks";
 import {
   LayoutDashboard,
   CheckCircle,
+  CreditCard,
   Leaf,
   Users,
   Package,
@@ -33,7 +34,7 @@ type MenuItem = {
 const adminMenu: MenuItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Pusat Persetujuan", href: "/pusat-persetujuan", icon: CheckCircle },
-  { name: "Verifikasi Eco", href: "/verifikasi-eco", icon: Leaf },
+  { name: "Verifikasi Pembayaran", href: "/verifikasi-payment", icon: CreditCard },
   { name: "Kelola Mitra", href: "/kelola-mitra", icon: Users },
   // { name: "Kelola Paket", href: "/kelola-paket", icon: Package },
 ];
@@ -98,6 +99,10 @@ const commonBottomMenu: MenuItem[] = [
   { name: "Logout", href: "#", icon: LogOut, isLogout: true },
 ];
 
+const guideTopMenu: MenuItem[] = [
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+];
+
 interface SidebarProps {
   onLogoutClick?: () => void;
 }
@@ -119,6 +124,8 @@ export function Sidebar({ onLogoutClick }: SidebarProps) {
   
   const isAdmin = currentRole === "ADMIN";
   const isVendor = currentRole === "VENDOR";
+  const isGuide = currentRole === "GUIDE";
+  const isLimitedRole = !isAdmin && !isVendor;
   const isActivatedPartner =
     isVendor &&
     (rawStatus === "APPROVED" ||
@@ -216,6 +223,39 @@ export function Sidebar({ onLogoutClick }: SidebarProps) {
           <nav className="flex flex-1 flex-col justify-between px-3 py-4">
             <div className="flex flex-col gap-1">
               {adminMenu.map((item) => renderNavItem(item))}
+            </div>
+
+            <div className="border-t border-border pt-4">
+              {commonBottomMenu.map((item) => renderNavItem(item, true))}
+            </div>
+          </nav>
+        </aside>
+
+        <UnderDevelopmentDialog
+          open={underDevelopmentOpen}
+          onOpenChange={setUnderDevelopmentOpen}
+          featureName={selectedFeature}
+        />
+      </>
+    );
+  }
+
+  if (isLimitedRole) {
+    return (
+      <>
+        <aside className="fixed left-0 top-0 z-40 flex h-screen w-[200px] flex-col border-r border-border bg-background">
+          <div className="flex h-16 items-center px-6">
+            <Link href="/dashboard" className="flex items-center gap-1">
+              <span className="text-xl font-bold text-blue-500">Portal</span>
+              <span className="text-xl font-bold text-foreground">
+                {isGuide ? "Guide" : "User"}
+              </span>
+            </Link>
+          </div>
+
+          <nav className="flex flex-1 flex-col justify-between px-3 py-4">
+            <div className="flex flex-col gap-1">
+              {guideTopMenu.map((item) => renderNavItem(item))}
             </div>
 
             <div className="border-t border-border pt-4">

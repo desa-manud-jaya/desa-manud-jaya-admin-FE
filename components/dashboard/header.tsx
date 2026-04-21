@@ -48,6 +48,8 @@ function mapRoleLabel(role?: string | null) {
       return "Vendor";
     case "ADMIN":
       return "Admin";
+    case "GUIDE":
+      return "Guide";
     default:
       return role ? role.charAt(0).toUpperCase() + role.slice(1).toLowerCase() : "Pengguna";
   }

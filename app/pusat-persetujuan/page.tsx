@@ -24,7 +24,7 @@ import {
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 type ApprovalAction = "approve" | "reject";
-type ApprovalSection = "partner" | "tour" | "deletion";
+type ApprovalSection = "partner" | "tour" | "deletion" | "guide";
 
 type PartnerApprovalItem = {
   id: string;
@@ -82,6 +82,47 @@ type DeletionRequestItem = {
   deletionReviewNote: string;
   moderationNote: string;
   status: ApprovalStatus;
+};
+
+type LocalGuideApprovalItem = {
+  id: string;
+  fullName: string;
+  username: string;
+  email: string;
+  phone: string;
+  licenseNumber: string;
+  cvDocumentUrl: string | null;
+  address: string;
+  ktpNumber: string;
+  experience: string;
+  language: string;
+  submissionDate: string;
+  documentStatus: string;
+  status: ApprovalStatus;
+};
+
+type PendingGuideApiItem = {
+  id?: string;
+  userId?: string;
+  guideId?: string;
+  fullName?: string;
+  name?: string;
+  username?: string;
+  email?: string;
+  phone?: string;
+  phoneNumber?: string;
+  licenseNumber?: string;
+  cvDocumentUrl?: string | null;
+  address?: string;
+  ktpNumber?: string;
+  nik?: string;
+  experience?: string;
+  languages?: string[] | string;
+  language?: string;
+  approvalStatus?: string;
+  status?: string;
+  createdAt?: string;
+  submittedAt?: string;
 };
 
 type DeletionRequestApiItem = {
@@ -174,9 +215,59 @@ function formatCategoryLabel(value: string) {
 }
 
 function mapApprovalStatus(value: string): ApprovalStatus {
-  if (value === "APPROVED") return "approved";
-  if (value === "REJECTED") return "rejected";
+  const normalized = value.toUpperCase();
+
+  if (normalized === "APPROVED") return "approved";
+  if (normalized === "REJECTED") return "rejected";
   return "pending";
+}
+
+function getStringValue(value: unknown, fallback = "-") {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return fallback;
+}
+
+function formatLanguageValue(value: string[] | string | undefined) {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(", ") : "-";
+  }
+
+  return getStringValue(value);
+}
+
+function mapPendingGuide(item: PendingGuideApiItem): LocalGuideApprovalItem {
+  const id = getStringValue(item.userId ?? item.guideId ?? item.id, "-");
+
+  return {
+    id,
+    fullName: getStringValue(item.fullName ?? item.name),
+    username: getStringValue(item.username),
+    email: getStringValue(item.email),
+    phone: getStringValue(item.phone ?? item.phoneNumber),
+    licenseNumber: getStringValue(item.licenseNumber),
+    cvDocumentUrl:
+      typeof item.cvDocumentUrl === "string" && item.cvDocumentUrl.trim()
+        ? item.cvDocumentUrl
+        : null,
+    address: getStringValue(item.address),
+    ktpNumber: getStringValue(item.ktpNumber ?? item.nik),
+    experience: getStringValue(item.experience),
+    language: formatLanguageValue(item.languages ?? item.language),
+    submissionDate: formatSubmissionDate(
+      getStringValue(item.submittedAt ?? item.createdAt, ""),
+    ),
+    documentStatus: item.cvDocumentUrl ? "CV terunggah" : "Belum ada CV",
+    status: mapApprovalStatus(
+      getStringValue(item.approvalStatus ?? item.status, "PENDING"),
+    ),
+  };
 }
 
 async function fetchPendingTourPackages(
@@ -221,6 +312,57 @@ async function fetchPendingTourPackages(
   }
 
   return data as PendingTourPackageApiItem[];
+}
+
+async function fetchPendingGuides(
+  token: string,
+): Promise<PendingGuideApiItem[]> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/guides/pending`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  const rawText = await response.text();
+
+  let data: unknown = [];
+
+  try {
+    data = rawText ? JSON.parse(rawText) : [];
+    console.log("GET /admin/guides/pending RESPONSE:", data);
+  } catch {
+    throw new Error("Response /admin/guides/pending tidak valid");
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengambil data pending guide",
+          )
+        : "Gagal mengambil data pending guide";
+
+    throw new Error(message);
+  }
+
+  const guideItems = Array.isArray(data)
+    ? data
+    : typeof data === "object" && data !== null
+      ? (data as { items?: unknown[]; data?: unknown[] }).items ??
+        (data as { items?: unknown[]; data?: unknown[] }).data
+      : null;
+
+  if (!Array.isArray(guideItems)) {
+    throw new Error("Format data pending guide tidak sesuai");
+  }
+
+  return guideItems as PendingGuideApiItem[];
 }
 
 interface ApprovalTableProps {
@@ -368,6 +510,7 @@ type DetailModalState =
   | { section: "partner"; item: PartnerApprovalItem }
   | { section: "tour"; item: TourPackageApprovalItem }
   | { section: "deletion"; item: DeletionRequestItem }
+  | { section: "guide"; item: LocalGuideApprovalItem }
   | null;
 
 function ApprovalDetailModal({
@@ -396,7 +539,9 @@ function ApprovalDetailModal({
                   ? "Detail Persetujuan Mitra"
                   : detail.section === "tour"
                     ? "Detail Persetujuan Paket Wisata"
-                    : "Detail Permintaan Penghapusan"}
+                    : detail.section === "deletion"
+                      ? "Detail Permintaan Penghapusan"
+                      : "Detail Persetujuan Tour Guide"}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Informasi lengkap data yang dipilih
@@ -631,6 +776,47 @@ function ApprovalDetailModal({
                 />
               </div>
             )}
+
+            {detail.section === "guide" && (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <DetailItem label="User ID" value={detail.item.id} />
+                <DetailItem label="Nama Lengkap" value={detail.item.fullName} />
+                <DetailItem label="Username" value={detail.item.username} />
+                <DetailItem label="Email" value={detail.item.email} />
+                <DetailItem label="Nomor Telepon" value={detail.item.phone} />
+                <DetailItem
+                  label="Nomor Lisensi"
+                  value={detail.item.licenseNumber}
+                />
+                <div>
+                  <p className="mb-2 text-sm font-medium text-muted-foreground">
+                    Status
+                  </p>
+                  <div className="flex min-h-[52px] items-center rounded-xl border border-border bg-muted/30 px-4 py-3">
+                    <StatusBadge status={detail.item.status} />
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <p className="mb-2 text-sm font-medium text-muted-foreground">
+                    Dokumen CV
+                  </p>
+                  <div className="flex min-h-[52px] items-center rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm">
+                    {detail.item.cvDocumentUrl ? (
+                      <a
+                        href={detail.item.cvDocumentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-blue-600 underline-offset-4 hover:underline"
+                      >
+                        Download / buka dokumen CV
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end border-t border-border px-6 py-4">
@@ -815,6 +1001,58 @@ async function rejectDeletionRequest(
   return data;
 }
 
+async function approvePendingGuide(token: string, id: string, note?: string) {
+  const query = note?.trim() ? `?note=${encodeURIComponent(note.trim())}` : "";
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/guides/${id}/approve${query}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  const data = await parseApiResponse(response);
+
+  console.log("APPROVE GUIDE RESPONSE:", data);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(data, "Gagal approve guide"));
+  }
+
+  return data;
+}
+
+async function rejectPendingGuide(
+  token: string,
+  userId: string,
+  reason: string,
+) {
+  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/guides/${userId}/reject?reason=${encodeURIComponent(
+    reason.trim(),
+  )}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  const data = await parseApiResponse(response);
+
+  console.log("REJECT GUIDE RESPONSE:", data);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(data, "Gagal reject guide"));
+  }
+
+  return data;
+}
+
 function formatShortId(value: string) {
   if (!value) return "-";
   return value.slice(0, 6);
@@ -850,6 +1088,13 @@ export default function ApprovalCenterPage() {
   const [errorDeletionRequests, setErrorDeletionRequests] = useState<
     string | null
   >(null);
+  const [guideApprovals, setGuideApprovals] = useState<
+    LocalGuideApprovalItem[]
+  >([]);
+  const [loadingPendingGuides, setLoadingPendingGuides] = useState(false);
+  const [errorPendingGuides, setErrorPendingGuides] = useState<string | null>(
+    null,
+  );
   const [approvingTourPackage, setApprovingTourPackage] = useState(false);
   const [rejectingTourPackage, setRejectingTourPackage] = useState(false);
 
@@ -857,8 +1102,11 @@ export default function ApprovalCenterPage() {
     useState(false);
   const [rejectingDeletionRequest, setRejectingDeletionRequest] =
     useState(false);
+  const [approvingGuide, setApprovingGuide] = useState(false);
+  const [rejectingGuide, setRejectingGuide] = useState(false);
 
   const [partnerSearch, setPartnerSearch] = useState("");
+  const [guideSearch, setGuideSearch] = useState("");
   const [partnerStatusMap, setPartnerStatusMap] = useState<
     Record<string, ApprovalStatus>
   >({});
@@ -965,6 +1213,49 @@ export default function ApprovalCenterPage() {
 
   useEffect(() => {
     if (loginUser?.role !== "ADMIN" || !token) {
+      setGuideApprovals([]);
+      setErrorPendingGuides(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadPendingGuides = async () => {
+      try {
+        setLoadingPendingGuides(true);
+        setErrorPendingGuides(null);
+
+        const guides = await fetchPendingGuides(token);
+        const mappedGuides = guides.map(mapPendingGuide);
+
+        console.log("MAPPED PENDING GUIDES:", mappedGuides);
+
+        if (!isMounted) return;
+        setGuideApprovals(mappedGuides);
+      } catch (error) {
+        if (!isMounted) return;
+
+        setGuideApprovals([]);
+        setErrorPendingGuides(
+          error instanceof Error
+            ? error.message
+            : "Gagal mengambil data pending guide",
+        );
+      } finally {
+        if (!isMounted) return;
+        setLoadingPendingGuides(false);
+      }
+    };
+
+    loadPendingGuides();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loginUser, token]);
+
+  useEffect(() => {
+    if (loginUser?.role !== "ADMIN" || !token) {
       setDeletionRequests([]);
       setErrorDeletionRequests(null);
       return;
@@ -1064,6 +1355,28 @@ export default function ApprovalCenterPage() {
         .includes(keyword),
     );
   }, [partnerApprovals, partnerSearch]);
+
+  const filteredGuideApprovals = useMemo(() => {
+    const keyword = guideSearch.trim().toLowerCase();
+
+    if (!keyword) return guideApprovals;
+
+    return guideApprovals.filter((item) =>
+      [
+        item.id,
+        item.fullName,
+        item.username,
+        item.email,
+        item.phone,
+        item.licenseNumber,
+        item.language,
+        item.documentStatus,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [guideApprovals, guideSearch]);
 
   const openActionModal = (
     section: ApprovalSection,
@@ -1203,9 +1516,6 @@ export default function ApprovalCenterPage() {
       }
     }
 
-    const nextStatus: ApprovalStatus =
-      modalType === "approve" ? "approved" : "rejected";
-
     if (selectedItem.section === "deletion" && modalType === "approve") {
       if (!token) {
         alert("Token admin tidak ditemukan. Silakan login ulang.");
@@ -1266,6 +1576,58 @@ export default function ApprovalCenterPage() {
       }
     }
 
+    if (selectedItem.section === "guide" && modalType === "approve") {
+      if (!token) {
+        alert("Token admin tidak ditemukan. Silakan login ulang.");
+        return;
+      }
+
+      try {
+        setApprovingGuide(true);
+
+        await approvePendingGuide(token, selectedItem.id, trimmedReason);
+
+        setGuideApprovals((prev) =>
+          prev.filter((item) => item.id !== selectedItem.id),
+        );
+
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Gagal approve guide");
+        return;
+      } finally {
+        setApprovingGuide(false);
+      }
+    }
+
+    if (selectedItem.section === "guide" && modalType === "reject") {
+      if (!token) {
+        alert("Token admin tidak ditemukan. Silakan login ulang.");
+        return;
+      }
+
+      try {
+        setRejectingGuide(true);
+
+        await rejectPendingGuide(token, selectedItem.id, trimmedReason);
+
+        setGuideApprovals((prev) =>
+          prev.filter((item) => item.id !== selectedItem.id),
+        );
+
+        setConfirmOpen(false);
+        setSuccessOpen(true);
+        return;
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Gagal reject guide");
+        return;
+      } finally {
+        setRejectingGuide(false);
+      }
+    }
+
     setConfirmOpen(false);
     setSuccessOpen(true);
   };
@@ -1283,21 +1645,22 @@ export default function ApprovalCenterPage() {
             searchValue={partnerSearch}
             onSearchChange={setPartnerSearch}
           >
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="font-semibold">ID</TableHead>
-                  <TableHead className="font-semibold">Nama Bisnis</TableHead>
-                  <TableHead className="font-semibold">Jenis Bisnis</TableHead>
-                  <TableHead className="font-semibold">Pemohon</TableHead>
-                  <TableHead className="font-semibold">
-                    Tanggal Pengajuan
+                  <TableHead className="w-[140px] font-semibold">ID</TableHead>
+                  <TableHead className="w-[32%] font-semibold">
+                    Nama Bisnis
                   </TableHead>
-                  <TableHead className="font-semibold">
-                    Status Dokumen
+                  <TableHead className="w-[24%] font-semibold">
+                    Pemohon
                   </TableHead>
-                  <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold">Aksi</TableHead>
+                  <TableHead className="w-[180px] font-semibold">
+                    Status
+                  </TableHead>
+                  <TableHead className="w-[320px] text-right font-semibold">
+                    Tindakan
+                  </TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -1306,36 +1669,41 @@ export default function ApprovalCenterPage() {
                   <TableRow>
                     <TableCell
                       className="text-center text-muted-foreground"
-                      colSpan={8}
+                      colSpan={5}
                     >
                       Memuat data pending vendor...
                     </TableCell>
                   </TableRow>
                 ) : errorPendingVendors ? (
                   <TableRow>
-                    <TableCell className="text-center text-red-500" colSpan={8}>
+                    <TableCell className="text-center text-red-500" colSpan={5}>
                       {errorPendingVendors}
                     </TableCell>
                   </TableRow>
                 ) : filteredPartnerApprovals.length > 0 ? (
                   filteredPartnerApprovals.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{formatShortId(item.id)}..</TableCell>
-                      <TableCell>{item.businessName}</TableCell>
-                      <TableCell>{item.businessType}</TableCell>
-                      <TableCell>{item.requestor}</TableCell>
-                      <TableCell>{item.submissionDate}</TableCell>
+                    <TableRow
+                      key={item.id}
+                      className="transition-colors hover:bg-muted/30"
+                    >
+                      <TableCell className="font-mono text-sm font-semibold text-muted-foreground">
+                        {formatShortId(item.id)}..
+                      </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                          {item.documentStatus}
+                        <div className="truncate font-medium text-foreground">
+                          {item.businessName}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="truncate text-muted-foreground">
+                          {item.requestor}
                         </div>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={item.status} />
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1381,7 +1749,7 @@ export default function ApprovalCenterPage() {
                   <TableRow>
                     <TableCell
                       className="text-center text-muted-foreground"
-                      colSpan={8}
+                      colSpan={5}
                     >
                       Tidak ada data
                     </TableCell>
@@ -1398,20 +1766,22 @@ export default function ApprovalCenterPage() {
           </h2>
 
           <ApprovalTable title="Manajemen Persetujuan">
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="font-semibold">ID</TableHead>
-                  <TableHead className="font-semibold">Nama Paket</TableHead>
-                  <TableHead className="font-semibold">Nama Mitra</TableHead>
-                  <TableHead className="font-semibold">Pemohon</TableHead>
-                  <TableHead className="font-semibold">Kategori</TableHead>
-                  <TableHead className="font-semibold">Harga</TableHead>
-                  <TableHead className="font-semibold">
-                    Tanggal Pengajuan
+                  <TableHead className="w-[140px] font-semibold">ID</TableHead>
+                  <TableHead className="w-[32%] font-semibold">
+                    Nama Paket
                   </TableHead>
-                  <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold">Aksi</TableHead>
+                  <TableHead className="w-[24%] font-semibold">
+                    Nama Mitra
+                  </TableHead>
+                  <TableHead className="w-[180px] font-semibold">
+                    Status
+                  </TableHead>
+                  <TableHead className="w-[320px] text-left font-semibold">
+                    Tindakan
+                  </TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -1420,32 +1790,41 @@ export default function ApprovalCenterPage() {
                   <TableRow>
                     <TableCell
                       className="text-center text-muted-foreground"
-                      colSpan={9}
+                      colSpan={5}
                     >
                       Memuat data pending package...
                     </TableCell>
                   </TableRow>
                 ) : errorPendingTourPackages ? (
                   <TableRow>
-                    <TableCell className="text-center text-red-500" colSpan={9}>
+                    <TableCell className="text-center text-red-500" colSpan={5}>
                       {errorPendingTourPackages}
                     </TableCell>
                   </TableRow>
                 ) : tourPackageApprovals.length > 0 ? (
                   tourPackageApprovals.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{formatShortId(item.id)}..</TableCell>
-                      <TableCell>{item.packageName}</TableCell>
-                      <TableCell>{item.partnerName}</TableCell>
-                      <TableCell>{item.requestor}</TableCell>
-                      <TableCell>{item.category}</TableCell>
-                      <TableCell>{item.price}</TableCell>
-                      <TableCell>{item.submissionDate}</TableCell>
+                    <TableRow
+                      key={item.id}
+                      className="transition-colors hover:bg-muted/30"
+                    >
+                      <TableCell className="font-mono text-sm font-semibold text-muted-foreground">
+                        {formatShortId(item.id)}..
+                      </TableCell>
+                      <TableCell>
+                        <div className="truncate font-medium text-foreground">
+                          {item.packageName}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="truncate text-muted-foreground">
+                          {item.partnerName}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <StatusBadge status={item.status} />
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="text-center">
+                        <div className="flex flex-wrap justify-start gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1491,7 +1870,7 @@ export default function ApprovalCenterPage() {
                   <TableRow>
                     <TableCell
                       className="text-center text-muted-foreground"
-                      colSpan={9}
+                      colSpan={5}
                     >
                       Tidak ada data
                     </TableCell>
@@ -1508,21 +1887,22 @@ export default function ApprovalCenterPage() {
           </h2>
 
           <ApprovalTable title="Manajemen Persetujuan">
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="font-semibold">ID</TableHead>
-                  <TableHead className="font-semibold">Nama Paket</TableHead>
-                  <TableHead className="font-semibold">Nama Bisnis</TableHead>
-                  <TableHead className="font-semibold">Pemohon</TableHead>
-                  <TableHead className="font-semibold">
-                    Tanggal Pengajuan
+                  <TableHead className="w-[140px] font-semibold">ID</TableHead>
+                  <TableHead className="w-[32%] font-semibold">
+                    Nama Paket
                   </TableHead>
-                  <TableHead className="font-semibold">
+                  <TableHead className="w-[220px] font-semibold">
                     Jenis Perubahan
                   </TableHead>
-                  <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold">Aksi</TableHead>
+                  <TableHead className="w-[180px] font-semibold">
+                    Status
+                  </TableHead>
+                  <TableHead className="w-[320px] font-semibold">
+                    Tindakan
+                  </TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -1531,25 +1911,31 @@ export default function ApprovalCenterPage() {
                   <TableRow>
                     <TableCell
                       className="text-center text-muted-foreground"
-                      colSpan={8}
+                      colSpan={5}
                     >
                       Memuat data deletion request...
                     </TableCell>
                   </TableRow>
                 ) : errorDeletionRequests ? (
                   <TableRow>
-                    <TableCell className="text-center text-red-500" colSpan={8}>
+                    <TableCell className="text-center text-red-500" colSpan={5}>
                       {errorDeletionRequests}
                     </TableCell>
                   </TableRow>
                 ) : deletionRequests.length > 0 ? (
                   deletionRequests.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{formatShortId(item.id)}..</TableCell>
-                      <TableCell>{item.packageName}</TableCell>
-                      <TableCell>{item.businessName}</TableCell>
-                      <TableCell>{item.requestor}</TableCell>
-                      <TableCell>{item.submissionDate}</TableCell>
+                    <TableRow
+                      key={item.id}
+                      className="transition-colors hover:bg-muted/30"
+                    >
+                      <TableCell className="font-mono text-sm font-semibold text-muted-foreground">
+                        {formatShortId(item.id)}..
+                      </TableCell>
+                      <TableCell>
+                        <div className="truncate font-medium text-foreground">
+                          {item.packageName}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">
                           {item.changeType}
@@ -1558,8 +1944,8 @@ export default function ApprovalCenterPage() {
                       <TableCell>
                         <StatusBadge status={item.status} />
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                     <TableCell className="text-center">
+                        <div className="flex flex-wrap justify-start gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1611,7 +1997,142 @@ export default function ApprovalCenterPage() {
                   <TableRow>
                     <TableCell
                       className="text-center text-muted-foreground"
-                      colSpan={8}
+                      colSpan={5}
+                    >
+                      Tidak ada data
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </ApprovalTable>
+        </section>
+
+        <section>
+          <h2 className="mb-4 text-xl font-bold text-foreground">
+            D. Persetujuan Tour Guide Baru
+          </h2>
+
+          <ApprovalTable
+            title="Manajemen Persetujuan Tour Guide"
+            searchValue={guideSearch}
+            onSearchChange={setGuideSearch}
+          >
+            <Table className="table-fixed">
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-[140px] font-semibold">ID</TableHead>
+                  <TableHead className="w-[32%] font-semibold">
+                    Nama Guide
+                  </TableHead>
+                  <TableHead className="w-[220px] font-semibold">
+                    Status Dokumen
+                  </TableHead>
+                  <TableHead className="w-[180px] font-semibold">
+                    Status
+                  </TableHead>
+                  <TableHead className="w-[320px] font-semibold">
+                    Tindakan
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+
+              <TableBody>
+                {loadingPendingGuides ? (
+                  <TableRow>
+                    <TableCell
+                      className="text-center text-muted-foreground"
+                      colSpan={5}
+                    >
+                      Memuat data pending tour guide...
+                    </TableCell>
+                  </TableRow>
+                ) : errorPendingGuides ? (
+                  <TableRow>
+                    <TableCell
+                      className="text-center text-red-500"
+                      colSpan={5}
+                    >
+                      {errorPendingGuides}
+                    </TableCell>
+                  </TableRow>
+                ) : filteredGuideApprovals.length > 0 ? (
+                  filteredGuideApprovals.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      className="transition-colors hover:bg-muted/30"
+                    >
+                      <TableCell className="font-mono text-sm font-semibold text-muted-foreground">
+                        {formatShortId(item.id)}..
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-w-[360px] truncate font-medium text-foreground">
+                          {item.fullName}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            item.cvDocumentUrl
+                              ? "bg-sky-100 text-sky-700 hover:bg-sky-100"
+                              : "bg-muted text-muted-foreground hover:bg-muted"
+                          }
+                        >
+                          {item.documentStatus}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={item.status} />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex flex-wrap justify-start gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                            onClick={() =>
+                              openDetailModal({ section: "guide", item })
+                            }
+                          >
+                            Detail
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            className="bg-emerald-500 text-white hover:bg-emerald-600"
+                            onClick={() =>
+                              openActionModal("guide", item.id, "approve")
+                            }
+                            disabled={
+                              item.status !== "pending" || approvingGuide
+                            }
+                          >
+                            {approvingGuide ? "Memproses..." : "Setujui"}
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-red-500 text-red-500 hover:bg-red-50"
+                            onClick={() =>
+                              openActionModal("guide", item.id, "reject")
+                            }
+                            disabled={
+                              item.status !== "pending" || rejectingGuide
+                            }
+                          >
+                            {rejectingGuide ? "Memproses..." : "Tolak"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      className="text-center text-muted-foreground"
+                      colSpan={5}
                     >
                       Tidak ada data
                     </TableCell>

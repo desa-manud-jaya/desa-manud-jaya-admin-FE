@@ -74,7 +74,7 @@ function AdminPackageManagePage() {
               <TableHead className="font-semibold">Kategori</TableHead>
               <TableHead className="font-semibold">Harga</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
-              <TableHead className="font-semibold">Aksi</TableHead>
+              <TableHead className="font-semibold">Tindakan</TableHead>
             </TableRow>
           </TableHeader>
 

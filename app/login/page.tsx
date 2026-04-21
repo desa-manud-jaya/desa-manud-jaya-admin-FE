@@ -13,7 +13,7 @@ export default function LoginPage() {
               Portal Admin & Mitra untuk mengelola konten wisata dan persetujuan.
             </h1>
             <p className="mt-4 max-w-md text-white/85">
-              Kelola pendaftaran kemitraan, paket wisata, verifikasi eco, dan berbagai konten destinasi dari satu dashboard.
+              Kelola pendaftaran kemitraan, paket wisata, verifikasi pembayaran, dan berbagai konten destinasi dari satu dashboard.
             </p>
           </div>
 

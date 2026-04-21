@@ -162,17 +162,8 @@ export const loginAndFetchUser = createAsyncThunk<
       return thunkAPI.rejectWithValue("Token tidak ditemukan dari login");
     }
 
-    if (role === "USER") {
-      return thunkAPI.rejectWithValue(
-        "Akun traveler/user tidak dapat login ke portal admin dan mitra. Silakan gunakan akun admin atau vendor."
-      );
-    }
-
-    if (role !== "ADMIN" && role !== "VENDOR") {
-      return thunkAPI.rejectWithValue(
-        "Role akun ini belum didukung untuk login ke portal ini."
-      );
-    }
+    console.log("AUTH LOGIN RESPONSE:", loginResult);
+    console.log("AUTH LOGIN ROLE:", role);
 
     let vendorData: VendorProfileData | null = null;
 

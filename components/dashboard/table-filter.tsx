@@ -25,6 +25,9 @@ interface TableFilterProps {
   businessTypeOptions?: FilterOption[]
   statusOptions?: FilterOption[]
   searchPlaceholder?: string
+  businessTypePlaceholder?: string
+  datePlaceholder?: string
+  statusPlaceholder?: string
 }
 
 export function TableFilter({
@@ -45,6 +48,9 @@ export function TableFilter({
     { value: "inactive", label: "Tidak Aktif" },
   ],
   searchPlaceholder = "Cari",
+  businessTypePlaceholder = "Jenis Bisnis",
+  datePlaceholder = "Tanggal",
+  statusPlaceholder = "Status",
 }: TableFilterProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg bg-background p-4 shadow-sm border border-border">
@@ -55,7 +61,7 @@ export function TableFilter({
 
       <Select onValueChange={onDateChange}>
         <SelectTrigger className="w-[140px]">
-          <SelectValue placeholder="Tanggal" />
+          <SelectValue placeholder={datePlaceholder} />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="today">Hari Ini</SelectItem>
@@ -67,7 +73,7 @@ export function TableFilter({
 
       <Select onValueChange={onBusinessTypeChange}>
         <SelectTrigger className="w-[160px]">
-          <SelectValue placeholder="Jenis Bisnis" />
+          <SelectValue placeholder={businessTypePlaceholder} />
         </SelectTrigger>
         <SelectContent>
           {businessTypeOptions.map((option) => (
@@ -80,7 +86,7 @@ export function TableFilter({
 
       <Select onValueChange={onStatusChange}>
         <SelectTrigger className="w-[140px]">
-          <SelectValue placeholder="Status" />
+          <SelectValue placeholder={statusPlaceholder} />
         </SelectTrigger>
         <SelectContent>
           {statusOptions.map((option) => (

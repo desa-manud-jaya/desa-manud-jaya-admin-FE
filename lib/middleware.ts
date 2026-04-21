@@ -8,7 +8,7 @@ const DASHBOARD_PATH = "/dashboard";
 const PROTECTED_PATHS = [
   "/dashboard",
   "/pusat-persetujuan",
-  "/verifikasi-eco",
+  "/verifikasi-payment",
   "/kelola-mitra",
   "/kelola-paket",
   "/pengaturan",

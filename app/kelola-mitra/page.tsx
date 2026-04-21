@@ -346,7 +346,7 @@ export default function PartnerManagePage() {
                 <TableHead className="font-semibold">Jenis Bisnis</TableHead>
                 <TableHead className="font-semibold">Bergabung Sejak</TableHead>
                 <TableHead className="font-semibold">Status</TableHead>
-                <TableHead className="font-semibold">Aksi</TableHead>
+                <TableHead className="font-semibold">Tindakan</TableHead>
               </TableRow>
             </TableHeader>
 
