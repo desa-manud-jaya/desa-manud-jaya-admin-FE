@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -13,9 +12,15 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { PartnerDashboard } from "@/components/partner/partner-dashboard";
 import { ActivatedPartnerDashboard } from "@/components/partner/activated-partner-dashboard";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { getPendingVendorApprovals } from "@/store/slices/admin-approval-slice";
-import { adminDashboardMockMetrics } from "@/lib/admin-dashboard-mock";
 import {
   Users,
   Package,
@@ -23,7 +28,6 @@ import {
   AlertTriangle,
   Wallet,
   CalendarDays,
-  RefreshCw,
   Clock3,
   MapPin,
   TicketCheck,
@@ -55,6 +59,34 @@ type DashboardStatItem = {
   trend?: DashboardTrend;
   action?: DashboardAction;
 };
+
+type MonthlyMetric = {
+  label: string;
+  value: number;
+};
+
+const adminRevenueTrendData: MonthlyMetric[] = [
+  { label: "Jan", value: 1250000 },
+  { label: "Feb", value: 1750000 },
+  { label: "Mar", value: 2400000 },
+  { label: "Apr", value: 3250000 },
+  { label: "Mei", value: 4300000 },
+  { label: "Jun", value: 5750000 },
+  { label: "Jul", value: 7250000 },
+];
+
+const adminPartnerGrowthData: MonthlyMetric[] = [
+  { label: "Jan", value: 3 },
+  { label: "Feb", value: 6 },
+  { label: "Mar", value: 9 },
+  { label: "Apr", value: 12 },
+  { label: "Mei", value: 15 },
+  { label: "Jun", value: 20 },
+  { label: "Jul", value: 22 },
+];
+
+const activeEcoFriendlyPackages = 6;
+const activeTourPackagesTotal = 7;
 
 type GuideBookingCard = {
   id: string;
@@ -355,76 +387,10 @@ function formatCurrencyRupiah(value: number) {
   }).format(value || 0);
 }
 
-function formatFilterDateLabel(value: string) {
-  if (!value) return "-";
-
-  return new Date(`${value}T00:00:00`).toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function parseNumberLike(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const normalized = value.replace(/[^\d.-]/g, "");
-    const parsed = Number(normalized);
-
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return 0;
-}
-
-function extractTotalRevenue(data: unknown): number {
-  if (typeof data === "number") {
-    return parseNumberLike(data);
-  }
-
-  if (!data || typeof data !== "object") {
-    return 0;
-  }
-
-  const record = data as Record<string, unknown>;
-  const candidateKeys = [
-    "totalRevenue",
-    "total",
-    "revenue",
-    "amount",
-    "grandTotal",
-  ];
-
-  for (const key of candidateKeys) {
-    if (key in record) {
-      const value = parseNumberLike(record[key]);
-
-      if (value !== 0 || record[key] === 0 || record[key] === "0") {
-        return value;
-      }
-    }
-  }
-
-  if ("data" in record) {
-    return extractTotalRevenue(record.data);
-  }
-
-  if ("summary" in record) {
-    return extractTotalRevenue(record.summary);
-  }
-
-  return 0;
-}
-
 function buildChartPoints(values: number[]) {
   const width = 720;
   const height = 220;
-  const paddingX = 24;
+  const paddingX = 44;
   const paddingY = 24;
 
   if (values.length === 0) return "";
@@ -539,69 +505,6 @@ async function fetchDeletionRequestsCount(token: string): Promise<number> {
   return (data as DeletionRequestsApiResponse).total ?? 0;
 }
 
-async function fetchRevenueSummary(
-  token: string,
-  startDate?: string,
-  endDate?: string,
-): Promise<number> {
-  const params = new URLSearchParams();
-
-  if (startDate) {
-    params.set("startDate", startDate);
-  }
-
-  if (endDate) {
-    params.set("endDate", endDate);
-  }
-
-  const queryString = params.toString();
-  const endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/revenue/summary${
-    queryString ? `?${queryString}` : ""
-  }`;
-
-  const response = await fetch(endpoint, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-  });
-
-  const rawText = await response.text();
-
-  let data: unknown = null;
-
-  if (rawText) {
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      data = rawText;
-    }
-  }
-
-  console.log("GET /admin/revenue/summary RESPONSE:", data);
-
-  if (!response.ok) {
-    const message =
-      typeof data === "object" && data !== null && "message" in data
-        ? String(
-            (data as { message?: string }).message ||
-              "Gagal mengambil revenue summary",
-          )
-        : typeof data === "string" && data.trim() !== ""
-          ? data
-          : "Gagal mengambil revenue summary";
-
-    throw new Error(message);
-  }
-
-  if (!rawText) {
-    return 0;
-  }
-
-  return extractTotalRevenue(data);
-}
-
 function AdminDashboardContent() {
   const dispatch = useAppDispatch();
   const { token, loginUser } = useAppSelector((state) => state.auth);
@@ -610,24 +513,8 @@ function AdminDashboardContent() {
   const [pendingTourPackagesCount, setPendingTourPackagesCount] = useState(0);
   const [pendingDeletionRequestsCount, setPendingDeletionRequestsCount] =
     useState(0);
-
-  const [revenueStartDate, setRevenueStartDate] = useState("");
-  const [revenueEndDate, setRevenueEndDate] = useState("");
-  const [revenueTotal, setRevenueTotal] = useState(0);
-  const [loadingRevenueSummary, setLoadingRevenueSummary] = useState(false);
-  const [revenueSummaryMessage, setRevenueSummaryMessage] = useState<
-    string | null
-  >("Belum ada data revenue. Menampilkan 0 sementara.");
-
-  useEffect(() => {
-    if (
-      revenueStartDate &&
-      revenueEndDate &&
-      revenueEndDate < revenueStartDate
-    ) {
-      setRevenueEndDate("");
-    }
-  }, [revenueStartDate, revenueEndDate]);
+  const [partnerGrowthDetailOpen, setPartnerGrowthDetailOpen] =
+    useState(false);
 
   useEffect(() => {
     if (loginUser?.role === "ADMIN") {
@@ -672,73 +559,30 @@ function AdminDashboardContent() {
     };
   }, [loginUser, token]);
 
-  const loadRevenueSummary = useCallback(
-    async (startDate?: string, endDate?: string) => {
-      if (loginUser?.role !== "ADMIN" || !token) {
-        setRevenueTotal(0);
-        setRevenueSummaryMessage(
-          "Belum ada data revenue. Menampilkan 0 sementara.",
-        );
-        return;
-      }
-
-      try {
-        setLoadingRevenueSummary(true);
-        setRevenueSummaryMessage(null);
-
-        const total = await fetchRevenueSummary(token, startDate, endDate);
-
-        setRevenueTotal(total);
-        setRevenueSummaryMessage(
-          total === 0
-            ? "Belum ada data revenue. Menampilkan 0 sementara."
-            : null,
-        );
-      } catch (error) {
-        console.error("LOAD REVENUE SUMMARY ERROR:", error);
-        setRevenueTotal(0);
-        setRevenueSummaryMessage(
-          "Revenue summary belum tersedia. Menampilkan 0 sementara.",
-        );
-      } finally {
-        setLoadingRevenueSummary(false);
-      }
-    },
-    [loginUser, token],
+  const revenueChartValues = useMemo(
+    () => adminRevenueTrendData.map((item) => item.value),
+    [],
   );
+  const revenueTotal = useMemo(
+    () => revenueChartValues.reduce((total, value) => total + value, 0),
+    [revenueChartValues],
+  );
+  const latestRevenue = adminRevenueTrendData.at(-1)?.value ?? 0;
 
-  useEffect(() => {
-    loadRevenueSummary();
-  }, [loadRevenueSummary]);
-
-  const handleGenerateRevenueSummary = async () => {
-    if (
-      revenueStartDate &&
-      revenueEndDate &&
-      revenueStartDate > revenueEndDate
-    ) {
-      setRevenueTotal(0);
-      setRevenueSummaryMessage(
-        "Start date tidak boleh lebih besar dari end date.",
-      );
-      return;
-    }
-
-    await loadRevenueSummary(revenueStartDate, revenueEndDate);
-  };
-
-  const handleResetRevenueFilter = async () => {
-    setRevenueStartDate("");
-    setRevenueEndDate("");
-    await loadRevenueSummary();
-  };
-
-  const selectedRangeLabel =
-    revenueStartDate || revenueEndDate
-      ? `${formatFilterDateLabel(revenueStartDate)} - ${formatFilterDateLabel(
-          revenueEndDate,
-        )}`
-      : "Semua Periode";
+  const partnerGrowthValues = useMemo(
+    () => adminPartnerGrowthData.map((item) => item.value),
+    [],
+  );
+  const latestPartnerCount = adminPartnerGrowthData.at(-1)?.value ?? 0;
+  const previousPartnerCount = adminPartnerGrowthData.at(-2)?.value ?? 0;
+  const partnerGrowthDelta = latestPartnerCount - previousPartnerCount;
+  const partnerGrowthPercent = previousPartnerCount
+    ? Math.round((partnerGrowthDelta / previousPartnerCount) * 100)
+    : 0;
+  const ecoFriendlyPercentage = Math.round(
+    (activeEcoFriendlyPackages / activeTourPackagesTotal) * 100,
+  );
+  const selectedRangeLabel = "Jan - Jul 2026";
 
   const statsRow1 = useMemo<DashboardStatItem[]>(
     () => [
@@ -779,15 +623,31 @@ function AdminDashboardContent() {
     () => [
       {
         title: "Mitra Aktif",
-        value: adminDashboardMockMetrics.activePartners,
+        value: latestPartnerCount,
+        trend: {
+          value: partnerGrowthPercent,
+          isUp: true,
+          label: "Pertumbuhan bulan ini",
+        },
         icon: <Users className="h-6 w-6 text-indigo-600" />,
         iconBgColor: "bg-indigo-100",
       },
       {
         title: "Paket Wisata Aktif",
-        value: adminDashboardMockMetrics.activeTourPackages,
+        value: activeTourPackagesTotal,
         icon: <Package className="h-6 w-6 text-amber-600" />,
         iconBgColor: "bg-amber-100",
+      },
+      {
+        title: "Paket Eco Friendly",
+        value: `${ecoFriendlyPercentage}%`,
+        trend: {
+          value: ecoFriendlyPercentage,
+          isUp: true,
+          label: `dari ${activeEcoFriendlyPackages}/${activeTourPackagesTotal} paket aktif`,
+        },
+        icon: <CalendarDays className="h-6 w-6 text-emerald-600" />,
+        iconBgColor: "bg-emerald-100",
       },
       {
         title: "Verifikasi Pembayaran Menunggu",
@@ -797,20 +657,8 @@ function AdminDashboardContent() {
         iconBgColor: "bg-blue-100",
       },
     ],
-    [],
+    [ecoFriendlyPercentage, latestPartnerCount, partnerGrowthPercent],
   );
-
-  const revenueChartValues = useMemo(() => {
-    return [
-      revenueTotal,
-      revenueTotal,
-      revenueTotal,
-      revenueTotal,
-      revenueTotal,
-      revenueTotal,
-      revenueTotal,
-    ];
-  }, [revenueTotal]);
 
   const chartPoints = useMemo(
     () => buildChartPoints(revenueChartValues),
@@ -832,9 +680,32 @@ function AdminDashboardContent() {
       });
   }, [chartPoints]);
 
+  const partnerChartPoints = useMemo(
+    () => buildChartPoints(partnerGrowthValues),
+    [partnerGrowthValues],
+  );
+
+  const partnerChartArea = useMemo(
+    () => buildChartArea(partnerChartPoints),
+    [partnerChartPoints],
+  );
+
+  const partnerPointCoordinates = useMemo(() => {
+    return partnerChartPoints
+      .split(" ")
+      .filter(Boolean)
+      .map((point) => {
+        const [x, y] = point.split(",");
+        return {
+          x: Number(x),
+          y: Number(y),
+        };
+      });
+  }, [partnerChartPoints]);
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">Dasbor</h1>
+      <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statsRow1.map((stat) => (
@@ -850,7 +721,7 @@ function AdminDashboardContent() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statsRow2.map((stat) => (
           <StatCard
             key={stat.title}
@@ -871,67 +742,8 @@ function AdminDashboardContent() {
               Revenue Summary
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Grafik ringkasan revenue admin berdasarkan filter tanggal
-              opsional.
+              Periode januari - juli 2026
             </p>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleResetRevenueFilter}
-            disabled={loadingRevenueSummary}
-          >
-            Reset Filter
-          </Button>
-        </div>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={revenueStartDate}
-              onChange={(e) => setRevenueStartDate(e.target.value)}
-              className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none focus:border-blue-400"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              End Date
-            </label>
-            <input
-              type="date"
-              value={revenueEndDate}
-              min={revenueStartDate || undefined}
-              disabled={!revenueStartDate}
-              onChange={(e) => setRevenueEndDate(e.target.value)}
-              className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
-            />
-          </div>
-
-          <div className="flex items-end">
-            <Button
-              type="button"
-              className="h-12 w-full bg-sky-600 hover:bg-sky-700 lg:w-auto"
-              onClick={handleGenerateRevenueSummary}
-              disabled={
-                loadingRevenueSummary ||
-                (Boolean(revenueEndDate) && !revenueStartDate)
-              }
-            >
-              {loadingRevenueSummary ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                "Generate Summary"
-              )}
-            </Button>
           </div>
         </div>
 
@@ -941,9 +753,10 @@ function AdminDashboardContent() {
               <div>
                 <p className="text-sm text-muted-foreground">Revenue Trend</p>
                 <p className="mt-1 text-2xl font-bold text-foreground">
-                  {loadingRevenueSummary
-                    ? "Memuat..."
-                    : formatCurrencyRupiah(revenueTotal)}
+                  {formatCurrencyRupiah(latestRevenue)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Revenue bulan terakhir dari data
                 </p>
               </div>
 
@@ -953,32 +766,32 @@ function AdminDashboardContent() {
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-border bg-background p-4">
-              <svg viewBox="0 0 720 220" className="h-[240px] w-full">
+              <svg viewBox="0 0 720 250" className="h-[260px] w-full">
                 <line
-                  x1="24"
+                  x1="44"
                   y1="196"
-                  x2="696"
+                  x2="676"
                   y2="196"
                   className="stroke-border"
                 />
                 <line
-                  x1="24"
+                  x1="44"
                   y1="138"
-                  x2="696"
+                  x2="676"
                   y2="138"
                   className="stroke-border"
                 />
                 <line
-                  x1="24"
+                  x1="44"
                   y1="80"
-                  x2="696"
+                  x2="676"
                   y2="80"
                   className="stroke-border"
                 />
                 <line
-                  x1="24"
+                  x1="44"
                   y1="24"
-                  x2="696"
+                  x2="676"
                   y2="24"
                   className="stroke-border"
                 />
@@ -1011,22 +824,26 @@ function AdminDashboardContent() {
                     fill="rgb(16 185 129)"
                   />
                 ))}
+
+                {pointCoordinates.map((point, index) => (
+                  <text
+                    key={`revenue-label-${index}`}
+                    x={point.x}
+                    y="235"
+                    textAnchor="middle"
+                    className="fill-muted-foreground text-[12px]"
+                  >
+                    {adminRevenueTrendData[index]?.label}
+                  </text>
+                ))}
               </svg>
             </div>
 
-            <div className="mt-3 flex justify-between text-xs text-muted-foreground">
-              <span>Mon</span>
-              <span>Tue</span>
-              <span>Wed</span>
-              <span>Thu</span>
-              <span>Fri</span>
-              <span>Sat</span>
-              <span>Sun</span>
-            </div>
-
             <p className="mt-3 text-xs text-muted-foreground">
-              Chart sementara memakai summary total karena endpoint saat ini
-              baru menyediakan total revenue summary.
+              Total revenue periode ini:{" "}
+              <span className="font-semibold text-foreground">
+                {formatCurrencyRupiah(revenueTotal)}
+              </span>
             </p>
           </div>
 
@@ -1047,20 +864,162 @@ function AdminDashboardContent() {
             </div>
 
             <div className="rounded-2xl border border-border bg-muted/20 p-5">
-              <p className="text-sm text-muted-foreground">Status Data</p>
-              <p className="mt-2 text-lg font-semibold text-foreground">
-                {revenueTotal > 0 ? "Data tersedia" : "Belum ada data"}
+              <p className="text-sm text-muted-foreground">
+                Paket Eco Friendly Aktif
               </p>
-
-              {revenueSummaryMessage && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                  {revenueSummaryMessage}
-                </div>
-              )}
+              <p className="mt-2 text-lg font-semibold text-foreground">
+                {activeEcoFriendlyPackages}/{activeTourPackagesTotal} paket
+              </p>
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-emerald-100">
+                <div
+                  className="h-full rounded-full bg-emerald-500"
+                  style={{ width: `${ecoFriendlyPercentage}%` }}
+                />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-emerald-700">
+                {ecoFriendlyPercentage}% eco friendly
+              </p>
             </div>
           </div>
         </div>
       </div>
+
+      <div className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-foreground">
+              Pertumbuhan Mitra
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Data jumlah mitra aktif dari bulan ke bulan.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+              <span className="font-semibold">{partnerGrowthDelta}</span> mitra
+              baru bulan terakhir
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              onClick={() => setPartnerGrowthDetailOpen(true)}
+            >
+              Detail
+            </Button>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-border bg-muted/20 p-4">
+          <svg viewBox="0 0 720 250" className="h-[250px] w-full">
+            <line
+              x1="44"
+              y1="196"
+              x2="676"
+              y2="196"
+              className="stroke-border"
+            />
+            <line
+              x1="44"
+              y1="138"
+              x2="676"
+              y2="138"
+              className="stroke-border"
+            />
+            <line
+              x1="44"
+              y1="80"
+              x2="676"
+              y2="80"
+              className="stroke-border"
+            />
+            <line
+              x1="44"
+              y1="24"
+              x2="676"
+              y2="24"
+              className="stroke-border"
+            />
+
+            {partnerChartArea && (
+              <polyline
+                fill="rgba(99,102,241,0.12)"
+                stroke="none"
+                points={partnerChartArea}
+              />
+            )}
+
+            {partnerChartPoints && (
+              <polyline
+                fill="none"
+                stroke="rgb(79 70 229)"
+                strokeWidth="4"
+                points={partnerChartPoints}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+
+            {partnerPointCoordinates.map((point, index) => (
+              <circle
+                key={`partner-point-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r="5"
+                fill="rgb(79 70 229)"
+              />
+            ))}
+
+            {partnerPointCoordinates.map((point, index) => (
+              <text
+                key={`partner-label-${index}`}
+                x={point.x}
+                y="235"
+                textAnchor="middle"
+                className="fill-muted-foreground text-[12px]"
+              >
+                {adminPartnerGrowthData[index]?.label}
+              </text>
+            ))}
+          </svg>
+        </div>
+      </div>
+
+      <Dialog
+        open={partnerGrowthDetailOpen}
+        onOpenChange={setPartnerGrowthDetailOpen}
+      >
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Detail Pertumbuhan Mitra</DialogTitle>
+            <DialogDescription>
+              Jumlah mitra aktif dari Januari sampai Juli 2026.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-2 overflow-hidden rounded-xl border border-border">
+            <div className="grid grid-cols-[1fr_auto] border-b border-border bg-muted/50 px-4 py-3 text-sm font-semibold text-foreground">
+              <span>Bulan</span>
+              <span>Jumlah Mitra</span>
+            </div>
+
+            {adminPartnerGrowthData.map((item) => (
+              <div
+                key={item.label}
+                className="grid grid-cols-[1fr_auto] border-b border-border px-4 py-3 text-sm last:border-b-0"
+              >
+                <span className="font-medium text-foreground">
+                  {item.label} 2026
+                </span>
+                <span className="font-semibold text-indigo-700">
+                  {item.value} mitra
+                </span>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
