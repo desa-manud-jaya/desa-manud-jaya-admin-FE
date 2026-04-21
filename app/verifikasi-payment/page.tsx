@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -81,6 +82,37 @@ type LocalGuide = {
   available: boolean
 }
 
+function TableSkeletonRows({
+  columns,
+  rows = 4,
+}: {
+  columns: number
+  rows?: number
+}) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <TableRow key={`skeleton-row-${rowIndex}`}>
+          {Array.from({ length: columns }).map((__, columnIndex) => (
+            <TableCell
+              key={`skeleton-cell-${rowIndex}-${columnIndex}`}
+              className="px-6"
+            >
+              <Skeleton
+                className={
+                  columnIndex === columns - 1
+                    ? "h-9 w-[180px]"
+                    : "h-5 w-full max-w-[200px]"
+                }
+              />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  )
+}
+
 type BookingPaymentStatus =
   | "waiting_for_payment"
   | "pending"
@@ -132,6 +164,23 @@ type BookingPaymentApiResponse = {
   page: number
   size: number
   total: number
+}
+
+type ApprovedPackageApiItem = {
+  id?: string
+  _id?: string
+  packageId?: string
+  name?: string | null
+  title?: string | null
+  packageName?: string | null
+  target?: {
+    id?: string
+    _id?: string
+    packageId?: string
+    name?: string | null
+    title?: string | null
+    packageName?: string | null
+  } | null
 }
 
 type ApprovedGuideApiItem = {
@@ -266,13 +315,16 @@ function getAssignedGuideLabel(
   return "-"
 }
 
-function getPackageName(item: BookingPaymentApiItem) {
+function getPackageName(
+  item: BookingPaymentApiItem,
+  packageNameById: Record<string, string> = {},
+) {
   return (
+    packageNameById[item.packageId] ??
     item.package?.name ??
     item.package?.title ??
     item.tourPackage?.name ??
     item.tourPackage?.title ??
-    item.business?.name ??
     `Paket ${item.packageId.slice(-6)}`
   )
 }
@@ -294,12 +346,15 @@ function mapVerificationStatus(item: BookingPaymentApiItem): VerificationStatus 
   return "WAITING_VERIFICATION"
 }
 
-function mapUnpaidBooking(item: BookingPaymentApiItem): UnpaidBooking {
+function mapUnpaidBooking(
+  item: BookingPaymentApiItem,
+  packageNameById: Record<string, string> = {},
+): UnpaidBooking {
   return {
     id: item.id,
     bookingCode: formatBookingCode(item.id),
     travelerName: getTravelerName(item),
-    packageName: getPackageName(item),
+    packageName: getPackageName(item, packageNameById),
     phoneNumber: item.user?.email ?? "-",
     bookingDate: item.createdAt,
     tourDate: item.tripDate ?? "",
@@ -309,13 +364,16 @@ function mapUnpaidBooking(item: BookingPaymentApiItem): UnpaidBooking {
   }
 }
 
-function mapPaidBooking(item: BookingPaymentApiItem): PaidBooking {
+function mapPaidBooking(
+  item: BookingPaymentApiItem,
+  packageNameById: Record<string, string> = {},
+): PaidBooking {
   return {
     id: item.id,
     packageId: item.packageId,
     bookingCode: formatBookingCode(item.id),
     travelerName: getTravelerName(item),
-    packageName: getPackageName(item),
+    packageName: getPackageName(item, packageNameById),
     phoneNumber: item.user?.email ?? "-",
     tripDate: item.tripDate,
     paymentDate: item.paymentUploadedAt ?? item.updatedAt ?? item.createdAt,
@@ -399,6 +457,67 @@ async function fetchBookingPayments(
   }
 
   return data as BookingPaymentApiResponse
+}
+
+async function fetchApprovedPackageNames(
+  token: string,
+): Promise<Record<string, string>> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/packages/approved`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    },
+  )
+
+  const rawText = await response.text()
+  let data: unknown = []
+
+  try {
+    data = rawText ? JSON.parse(rawText) : []
+  } catch {
+    throw new Error("Response /packages/approved tidak valid")
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengambil package approved",
+          )
+        : "Gagal mengambil package approved"
+
+    throw new Error(message)
+  }
+
+  const packageItems = Array.isArray(data)
+    ? data
+    : typeof data === "object" && data !== null
+      ? (data as { items?: unknown[]; data?: unknown[] }).items ??
+        (data as { items?: unknown[]; data?: unknown[] }).data
+      : null
+
+  if (!Array.isArray(packageItems)) {
+    throw new Error("Format data package approved tidak sesuai")
+  }
+
+  return (packageItems as ApprovedPackageApiItem[]).reduce<
+    Record<string, string>
+  >((accumulator, item) => {
+    const source = item.target ?? item
+    const id = source.id ?? source._id ?? source.packageId
+    const name = source.name ?? source.title ?? source.packageName
+
+    if (id && name) {
+      accumulator[id] = name
+    }
+
+    return accumulator
+  }, {})
 }
 
 async function parseApiResponse(response: Response) {
@@ -575,12 +694,13 @@ export default function PaymentVerificationPage() {
         setLoadingBookings(true)
         setBookingError(null)
 
-        const response = await fetchBookingPayments(
-          token,
-          paymentStatusFilter,
-          bookingPage,
-          10,
-        )
+        const [response, packageNameById] = await Promise.all([
+          fetchBookingPayments(token, paymentStatusFilter, bookingPage, 10),
+          fetchApprovedPackageNames(token).catch((error) => {
+            console.error("LOAD APPROVED PACKAGE NAMES ERROR:", error)
+            return {} as Record<string, string>
+          }),
+        ])
 
         if (!isMounted) return
 
@@ -591,8 +711,12 @@ export default function PaymentVerificationPage() {
           (item) => item.status.toLowerCase() !== "waiting_for_payment",
         )
 
-        setUnpaidBookings(unpaidItems.map(mapUnpaidBooking))
-        setPaidBookings(paidItems.map(mapPaidBooking))
+        setUnpaidBookings(
+          unpaidItems.map((item) => mapUnpaidBooking(item, packageNameById)),
+        )
+        setPaidBookings(
+          paidItems.map((item) => mapPaidBooking(item, packageNameById)),
+        )
         setBookingTotal(response.total)
       } catch (error) {
         if (!isMounted) return
@@ -844,9 +968,13 @@ export default function PaymentVerificationPage() {
             <p className="text-sm font-medium text-muted-foreground">
               Total transaksi
             </p>
-            <p className="mt-1 text-2xl font-bold text-foreground">
-              {loadingBookings ? "Memuat..." : bookingTotal}
-            </p>
+            {loadingBookings ? (
+              <Skeleton className="mt-2 h-8 w-16" />
+            ) : (
+              <p className="mt-1 text-2xl font-bold text-foreground">
+                {bookingTotal}
+              </p>
+            )}
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:w-auto">
@@ -915,14 +1043,7 @@ export default function PaymentVerificationPage() {
 
               <TableBody>
                 {loadingBookings ? (
-                  <TableRow>
-                    <TableCell
-                      className="py-8 text-center text-muted-foreground"
-                      colSpan={7}
-                    >
-                      Memuat booking belum terbayar...
-                    </TableCell>
-                  </TableRow>
+                  <TableSkeletonRows columns={7} />
                 ) : filteredUnpaidBookings.length === 0 ? (
                   <TableRow>
                     <TableCell
@@ -1008,14 +1129,7 @@ export default function PaymentVerificationPage() {
 
               <TableBody>
                 {loadingBookings ? (
-                  <TableRow>
-                    <TableCell
-                      className="py-8 text-center text-muted-foreground"
-                      colSpan={6}
-                    >
-                      Memuat booking sudah dibayar...
-                    </TableCell>
-                  </TableRow>
+                  <TableSkeletonRows columns={6} />
                 ) : filteredPaidBookings.length === 0 ? (
                   <TableRow>
                     <TableCell

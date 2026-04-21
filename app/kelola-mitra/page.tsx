@@ -7,6 +7,7 @@ import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { TableFilter } from "@/components/dashboard/table-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAppSelector } from "@/store/hooks";
 import {
   Table,
@@ -40,6 +41,34 @@ type PartnerRow = {
   joinDate: string;
   status: "active" | "inactive";
 };
+
+function TableSkeletonRows({
+  columns,
+  rows = 5,
+}: {
+  columns: number;
+  rows?: number;
+}) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <TableRow key={`skeleton-row-${rowIndex}`}>
+          {Array.from({ length: columns }).map((__, columnIndex) => (
+            <TableCell key={`skeleton-cell-${rowIndex}-${columnIndex}`}>
+              <Skeleton
+                className={
+                  columnIndex === columns - 1
+                    ? "h-9 w-[90px]"
+                    : "h-5 w-full max-w-[200px]"
+                }
+              />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  );
+}
 
 async function fetchApprovedVendors(
   token: string
@@ -352,14 +381,7 @@ export default function PartnerManagePage() {
 
             <TableBody>
               {loadingPartners ? (
-                <TableRow>
-                  <TableCell
-                    className="text-center text-muted-foreground"
-                    colSpan={8}
-                  >
-                    Memuat data mitra...
-                  </TableCell>
-                </TableRow>
+                <TableSkeletonRows columns={8} />
               ) : errorPartners ? (
                 <TableRow>
                   <TableCell className="text-center text-red-500" colSpan={8}>

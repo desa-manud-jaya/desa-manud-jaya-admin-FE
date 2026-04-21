@@ -97,6 +97,23 @@ type GuideBookingsResponse = {
   total: number;
 };
 
+type ApprovedPackageApiItem = {
+  id?: string;
+  _id?: string;
+  packageId?: string;
+  name?: string | null;
+  title?: string | null;
+  packageName?: string | null;
+  target?: {
+    id?: string;
+    _id?: string;
+    packageId?: string;
+    name?: string | null;
+    title?: string | null;
+    packageName?: string | null;
+  } | null;
+};
+
 type GuideProfileData = {
   userId: string;
   username: string;
@@ -151,12 +168,22 @@ function formatGuideBookingStatus(value: string) {
   return value || "-";
 }
 
-function mapGuideBooking(item: GuideBookingApiItem): GuideBookingCard {
+function getGuideBookingPackageName(
+  item: GuideBookingApiItem,
+  packageNameById: Record<string, string> = {},
+) {
+  return packageNameById[item.packageId] ?? `Paket ${item.packageId.slice(-6)}`;
+}
+
+function mapGuideBooking(
+  item: GuideBookingApiItem,
+  packageNameById: Record<string, string> = {},
+): GuideBookingCard {
   return {
     id: item.id,
     bookingCode: formatBookingCode(item.id),
     customerName: item.user?.username ?? item.user?.email ?? item.userId,
-    destination: item.business?.name ?? `Paket ${item.packageId.slice(-6)}`,
+    destination: getGuideBookingPackageName(item, packageNameById),
     date: formatGuideBookingDate(item.tripDate),
     time: "-",
     pax: item.quantity,
@@ -205,9 +232,11 @@ async function fetchGuideProfile(token: string): Promise<GuideProfileData> {
   return data as GuideProfileData;
 }
 
-async function fetchGuideBookings(token: string): Promise<GuideBookingCard[]> {
+async function fetchApprovedPackageNames(
+  token: string,
+): Promise<Record<string, string>> {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_BASE_URL}/guide/bookings`,
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/packages/approved`,
     {
       method: "GET",
       headers: {
@@ -218,10 +247,77 @@ async function fetchGuideBookings(token: string): Promise<GuideBookingCard[]> {
   );
 
   const rawText = await response.text();
+  let data: unknown = [];
+
+  try {
+    data = rawText ? JSON.parse(rawText) : [];
+  } catch {
+    throw new Error("Response /packages/approved tidak valid");
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data !== null && "message" in data
+        ? String(
+            (data as { message?: string }).message ||
+              "Gagal mengambil package approved",
+          )
+        : "Gagal mengambil package approved";
+
+    throw new Error(message);
+  }
+
+  const packageItems = Array.isArray(data)
+    ? data
+    : typeof data === "object" && data !== null
+      ? (data as { items?: unknown[]; data?: unknown[] }).items ??
+        (data as { items?: unknown[]; data?: unknown[] }).data
+      : null;
+
+  if (!Array.isArray(packageItems)) {
+    throw new Error("Format data package approved tidak sesuai");
+  }
+
+  return (packageItems as ApprovedPackageApiItem[]).reduce<
+    Record<string, string>
+  >((accumulator, item) => {
+    const source = item.target ?? item;
+    const id = source.id ?? source._id ?? source.packageId;
+    const name = source.name ?? source.title ?? source.packageName;
+
+    if (id && name) {
+      accumulator[id] = name;
+    }
+
+    return accumulator;
+  }, {});
+}
+
+async function fetchGuideBookings(token: string): Promise<GuideBookingCard[]> {
+  const [response, packageNameById] = await Promise.all([
+    fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/guide/bookings`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      },
+    ),
+    fetchApprovedPackageNames(token).catch((error) => {
+      console.error("LOAD APPROVED PACKAGE NAMES ERROR:", error);
+      return {} as Record<string, string>;
+    }),
+  ]);
+
+  const rawText = await response.text();
   let data: unknown = null;
 
   try {
-    data = rawText ? JSON.parse(rawText) : { items: [], page: 0, size: 10, total: 0 };
+    data = rawText
+      ? JSON.parse(rawText)
+      : { items: [], page: 0, size: 10, total: 0 };
   } catch {
     throw new Error("Response /guide/bookings tidak valid");
   }
@@ -246,7 +342,9 @@ async function fetchGuideBookings(token: string): Promise<GuideBookingCard[]> {
     throw new Error("Format data booking guide tidak sesuai");
   }
 
-  return (data as GuideBookingsResponse).items.map(mapGuideBooking);
+  return (data as GuideBookingsResponse).items.map((item) =>
+    mapGuideBooking(item, packageNameById),
+  );
 }
 
 function formatCurrencyRupiah(value: number) {

@@ -6,6 +6,7 @@ import { ApprovalModal } from "@/components/dashboard/approval-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Search, X } from "lucide-react";
 import {
   Table,
@@ -419,6 +420,34 @@ function StatusBadge({ status }: { status: ApprovalStatus }) {
     <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">
       Menunggu
     </Badge>
+  );
+}
+
+function TableSkeletonRows({
+  columns,
+  rows = 4,
+}: {
+  columns: number;
+  rows?: number;
+}) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <TableRow key={`skeleton-row-${rowIndex}`}>
+          {Array.from({ length: columns }).map((__, columnIndex) => (
+            <TableCell key={`skeleton-cell-${rowIndex}-${columnIndex}`}>
+              <Skeleton
+                className={
+                  columnIndex === columns - 1
+                    ? "ml-auto h-9 w-[220px]"
+                    : "h-5 w-full max-w-[220px]"
+                }
+              />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
   );
 }
 
@@ -1666,14 +1695,7 @@ export default function ApprovalCenterPage() {
 
               <TableBody>
                 {loadingPendingVendors ? (
-                  <TableRow>
-                    <TableCell
-                      className="text-center text-muted-foreground"
-                      colSpan={5}
-                    >
-                      Memuat data pending vendor...
-                    </TableCell>
-                  </TableRow>
+                  <TableSkeletonRows columns={5} />
                 ) : errorPendingVendors ? (
                   <TableRow>
                     <TableCell className="text-center text-red-500" colSpan={5}>
@@ -1787,14 +1809,7 @@ export default function ApprovalCenterPage() {
 
               <TableBody>
                 {loadingPendingTourPackages ? (
-                  <TableRow>
-                    <TableCell
-                      className="text-center text-muted-foreground"
-                      colSpan={5}
-                    >
-                      Memuat data pending package...
-                    </TableCell>
-                  </TableRow>
+                  <TableSkeletonRows columns={5} />
                 ) : errorPendingTourPackages ? (
                   <TableRow>
                     <TableCell className="text-center text-red-500" colSpan={5}>
@@ -1908,14 +1923,7 @@ export default function ApprovalCenterPage() {
 
               <TableBody>
                 {loadingDeletionRequests ? (
-                  <TableRow>
-                    <TableCell
-                      className="text-center text-muted-foreground"
-                      colSpan={5}
-                    >
-                      Memuat data deletion request...
-                    </TableCell>
-                  </TableRow>
+                  <TableSkeletonRows columns={5} />
                 ) : errorDeletionRequests ? (
                   <TableRow>
                     <TableCell className="text-center text-red-500" colSpan={5}>
@@ -2039,14 +2047,7 @@ export default function ApprovalCenterPage() {
 
               <TableBody>
                 {loadingPendingGuides ? (
-                  <TableRow>
-                    <TableCell
-                      className="text-center text-muted-foreground"
-                      colSpan={5}
-                    >
-                      Memuat data pending tour guide...
-                    </TableCell>
-                  </TableRow>
+                  <TableSkeletonRows columns={5} />
                 ) : errorPendingGuides ? (
                   <TableRow>
                     <TableCell
