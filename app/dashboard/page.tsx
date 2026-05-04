@@ -19,6 +19,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { getPendingVendorApprovals } from "@/store/slices/admin-approval-slice";
 import {
@@ -61,28 +68,40 @@ type DashboardStatItem = {
 };
 
 type MonthlyMetric = {
+  monthIndex: number;
   label: string;
+  fullLabel: string;
   value: number;
 };
 
 const adminRevenueTrendData: MonthlyMetric[] = [
-  { label: "Jan", value: 1250000 },
-  { label: "Feb", value: 1750000 },
-  { label: "Mar", value: 2400000 },
-  { label: "Apr", value: 3250000 },
-  { label: "Mei", value: 4300000 },
-  { label: "Jun", value: 5750000 },
-  { label: "Jul", value: 7250000 },
+  { monthIndex: 0, label: "Jan", fullLabel: "Januari", value: 1250000 },
+  { monthIndex: 1, label: "Feb", fullLabel: "Februari", value: 1935000 },
+  { monthIndex: 2, label: "Mar", fullLabel: "Maret", value: 2410000 },
+  { monthIndex: 3, label: "Apr", fullLabel: "April", value: 3625000 },
+  { monthIndex: 4, label: "Mei", fullLabel: "Mei", value: 4890000 },
+  { monthIndex: 5, label: "Jun", fullLabel: "Juni", value: 6380000 },
+  { monthIndex: 6, label: "Jul", fullLabel: "Juli", value: 7945000 },
+  { monthIndex: 7, label: "Agu", fullLabel: "Agustus", value: 9310000 },
+  { monthIndex: 8, label: "Sep", fullLabel: "September", value: 10850000 },
+  { monthIndex: 9, label: "Okt", fullLabel: "Oktober", value: 12425000 },
+  { monthIndex: 10, label: "Nov", fullLabel: "November", value: 13980000 },
+  { monthIndex: 11, label: "Des", fullLabel: "Desember", value: 15800000 },
 ];
 
 const adminPartnerGrowthData: MonthlyMetric[] = [
-  { label: "Jan", value: 3 },
-  { label: "Feb", value: 6 },
-  { label: "Mar", value: 9 },
-  { label: "Apr", value: 12 },
-  { label: "Mei", value: 15 },
-  { label: "Jun", value: 20 },
-  { label: "Jul", value: 22 },
+  { monthIndex: 0, label: "Jan", fullLabel: "Januari", value: 3 },
+  { monthIndex: 1, label: "Feb", fullLabel: "Februari", value: 5 },
+  { monthIndex: 2, label: "Mar", fullLabel: "Maret", value: 8 },
+  { monthIndex: 3, label: "Apr", fullLabel: "April", value: 12 },
+  { monthIndex: 4, label: "Mei", fullLabel: "Mei", value: 17 },
+  { monthIndex: 5, label: "Jun", fullLabel: "Juni", value: 21 },
+  { monthIndex: 6, label: "Jul", fullLabel: "Juli", value: 24 },
+  { monthIndex: 7, label: "Agu", fullLabel: "Agustus", value: 28 },
+  { monthIndex: 8, label: "Sep", fullLabel: "September", value: 33 },
+  { monthIndex: 9, label: "Okt", fullLabel: "Oktober", value: 37 },
+  { monthIndex: 10, label: "Nov", fullLabel: "November", value: 41 },
+  { monthIndex: 11, label: "Des", fullLabel: "Desember", value: 46 },
 ];
 
 const activeEcoFriendlyPackages = 6;
@@ -509,12 +528,19 @@ function AdminDashboardContent() {
   const dispatch = useAppDispatch();
   const { token, loginUser } = useAppSelector((state) => state.auth);
   const { pendingVendors } = useAppSelector((state) => state.adminApproval);
+  const currentDate = useMemo(() => new Date(), []);
+  const currentYear = currentDate.getFullYear();
+  const lastCompletedMonthIndex = Math.max(currentDate.getMonth() - 1, 0);
 
   const [pendingTourPackagesCount, setPendingTourPackagesCount] = useState(0);
   const [pendingDeletionRequestsCount, setPendingDeletionRequestsCount] =
     useState(0);
   const [partnerGrowthDetailOpen, setPartnerGrowthDetailOpen] =
     useState(false);
+  const [selectedRevenueStartMonth, setSelectedRevenueStartMonth] = useState(0);
+  const [selectedRevenueEndMonth, setSelectedRevenueEndMonth] = useState(
+    lastCompletedMonthIndex,
+  );
 
   useEffect(() => {
     if (loginUser?.role === "ADMIN") {
@@ -559,22 +585,59 @@ function AdminDashboardContent() {
     };
   }, [loginUser, token]);
 
+  const availableRevenueData = useMemo(
+    () =>
+      adminRevenueTrendData.filter(
+        (item) => item.monthIndex <= lastCompletedMonthIndex,
+      ),
+    [lastCompletedMonthIndex],
+  );
+
+  const availablePartnerGrowthData = useMemo(
+    () =>
+      adminPartnerGrowthData.filter(
+        (item) => item.monthIndex <= lastCompletedMonthIndex,
+      ),
+    [lastCompletedMonthIndex],
+  );
+
+  useEffect(() => {
+    const lastAvailableMonth =
+      availableRevenueData.at(-1)?.monthIndex ?? lastCompletedMonthIndex;
+
+    setSelectedRevenueStartMonth((previous) =>
+      Math.min(previous, lastAvailableMonth),
+    );
+    setSelectedRevenueEndMonth((previous) => Math.min(previous, lastAvailableMonth));
+  }, [availableRevenueData, lastCompletedMonthIndex]);
+
+  const filteredRevenueData = useMemo(
+    () =>
+      availableRevenueData.filter(
+        (item) =>
+          item.monthIndex >= selectedRevenueStartMonth &&
+          item.monthIndex <= selectedRevenueEndMonth,
+      ),
+    [availableRevenueData, selectedRevenueEndMonth, selectedRevenueStartMonth],
+  );
+
   const revenueChartValues = useMemo(
-    () => adminRevenueTrendData.map((item) => item.value),
-    [],
+    () => filteredRevenueData.map((item) => item.value),
+    [filteredRevenueData],
   );
   const revenueTotal = useMemo(
     () => revenueChartValues.reduce((total, value) => total + value, 0),
     [revenueChartValues],
   );
-  const latestRevenue = adminRevenueTrendData.at(-1)?.value ?? 0;
+  const latestRevenue = filteredRevenueData.at(-1)?.value ?? 0;
 
   const partnerGrowthValues = useMemo(
-    () => adminPartnerGrowthData.map((item) => item.value),
-    [],
+    () => availablePartnerGrowthData.map((item) => item.value),
+    [availablePartnerGrowthData],
   );
-  const latestPartnerCount = adminPartnerGrowthData.at(-1)?.value ?? 0;
-  const previousPartnerCount = adminPartnerGrowthData.at(-2)?.value ?? 0;
+  const latestPartnerCount = availablePartnerGrowthData.at(-1)?.value ?? 0;
+  const previousPartnerCount =
+    availablePartnerGrowthData.at(-2)?.value ?? 0;
   const partnerGrowthDelta = latestPartnerCount - previousPartnerCount;
   const partnerGrowthPercent = previousPartnerCount
     ? Math.round((partnerGrowthDelta / previousPartnerCount) * 100)
@@ -582,7 +645,18 @@ function AdminDashboardContent() {
   const ecoFriendlyPercentage = Math.round(
     (activeEcoFriendlyPackages / activeTourPackagesTotal) * 100,
   );
-  const selectedRangeLabel = "Jan - Jul 2026";
+  const selectedRevenueStartLabel =
+    filteredRevenueData[0]?.fullLabel ??
+    availableRevenueData[0]?.fullLabel ??
+    "Januari";
+  const selectedRevenueEndLabel =
+    filteredRevenueData.at(-1)?.fullLabel ??
+    availableRevenueData.at(-1)?.fullLabel ??
+    "Januari";
+  const selectedRangeLabel = `${selectedRevenueStartLabel} - ${selectedRevenueEndLabel} ${currentYear}`;
+  const elapsedMonthsLabel = `Januari - ${
+    availablePartnerGrowthData.at(-1)?.fullLabel ?? "Januari"
+  } ${currentYear}`;
 
   const statsRow1 = useMemo<DashboardStatItem[]>(
     () => [
@@ -742,8 +816,60 @@ function AdminDashboardContent() {
               Revenue Summary
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Periode januari - juli 2026
+              Pilih periode revenue berdasarkan bulan yang sudah selesai.
             </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Select
+              value={String(selectedRevenueStartMonth)}
+              onValueChange={(value) => {
+                const nextStartMonth = Number(value);
+                setSelectedRevenueStartMonth(nextStartMonth);
+                if (nextStartMonth > selectedRevenueEndMonth) {
+                  setSelectedRevenueEndMonth(nextStartMonth);
+                }
+              }}
+            >
+              <SelectTrigger className="w-full min-w-[180px]">
+                <SelectValue placeholder="Dari bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRevenueData.map((item) => (
+                  <SelectItem
+                    key={`revenue-start-${item.monthIndex}`}
+                    value={String(item.monthIndex)}
+                  >
+                    {item.fullLabel}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={String(selectedRevenueEndMonth)}
+              onValueChange={(value) => {
+                const nextEndMonth = Number(value);
+                setSelectedRevenueEndMonth(nextEndMonth);
+                if (nextEndMonth < selectedRevenueStartMonth) {
+                  setSelectedRevenueStartMonth(nextEndMonth);
+                }
+              }}
+            >
+              <SelectTrigger className="w-full min-w-[180px]">
+                <SelectValue placeholder="Sampai bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRevenueData.map((item) => (
+                  <SelectItem
+                    key={`revenue-end-${item.monthIndex}`}
+                    value={String(item.monthIndex)}
+                  >
+                    {item.fullLabel}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -756,7 +882,7 @@ function AdminDashboardContent() {
                   {formatCurrencyRupiah(latestRevenue)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Revenue bulan terakhir dari data
+                  Revenue pada bulan terakhir di rentang terpilih
                 </p>
               </div>
 
@@ -833,7 +959,7 @@ function AdminDashboardContent() {
                     textAnchor="middle"
                     className="fill-muted-foreground text-[12px]"
                   >
-                    {adminRevenueTrendData[index]?.label}
+                    {filteredRevenueData[index]?.label}
                   </text>
                 ))}
               </svg>
@@ -891,7 +1017,7 @@ function AdminDashboardContent() {
               Pertumbuhan Mitra
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Data jumlah mitra aktif dari bulan ke bulan.
+              Data jumlah mitra aktif sampai bulan yang sudah selesai.
             </p>
           </div>
 
@@ -979,7 +1105,7 @@ function AdminDashboardContent() {
                 textAnchor="middle"
                 className="fill-muted-foreground text-[12px]"
               >
-                {adminPartnerGrowthData[index]?.label}
+                {availablePartnerGrowthData[index]?.label}
               </text>
             ))}
           </svg>
@@ -994,7 +1120,7 @@ function AdminDashboardContent() {
           <DialogHeader>
             <DialogTitle>Detail Pertumbuhan Mitra</DialogTitle>
             <DialogDescription>
-              Jumlah mitra aktif dari Januari sampai Juli 2026.
+              Jumlah mitra aktif dari {elapsedMonthsLabel}.
             </DialogDescription>
           </DialogHeader>
 
@@ -1004,13 +1130,13 @@ function AdminDashboardContent() {
               <span>Jumlah Mitra</span>
             </div>
 
-            {adminPartnerGrowthData.map((item) => (
+            {availablePartnerGrowthData.map((item) => (
               <div
                 key={item.label}
                 className="grid grid-cols-[1fr_auto] border-b border-border px-4 py-3 text-sm last:border-b-0"
               >
                 <span className="font-medium text-foreground">
-                  {item.label} 2026
+                  {item.fullLabel} {currentYear}
                 </span>
                 <span className="font-semibold text-indigo-700">
                   {item.value} mitra
